@@ -28,7 +28,7 @@ export default function AgeGate({ onVerified }: AgeGateProps) {
       <div className="w-full max-w-md text-center space-y-8">
         <div className="flex justify-center mb-8">
           <Image
-            src="/images/keepers-heart-logo.png"
+            src="/images/logo.png"
             alt="Keeper's Heart Whiskey"
             width={200}
             height={200}

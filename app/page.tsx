@@ -56,7 +56,7 @@ export default function Home() {
         {/* Logo */}
         <div className="flex justify-center mb-8">
           <Image
-            src="/images/keepers-heart-logo.png"
+            src="/images/logo.png"
             alt="Keeper's Heart Whiskey"
             width={160}
             height={160}

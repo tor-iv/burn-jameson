@@ -1,21 +1,32 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
+@import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Inter:wght@300;400;500;600;700&display=swap');
 
-@layer base {
-  body {
-    @apply bg-oak font-sans text-charcoal;
-  }
+@theme {
+  /* Brand Colors */
+  --color-whiskey-amber: #B8860B;
+  --color-whiskey-light: #CD853F;
+  --color-cream: #FFF8DC;
+  --color-emerald: #2C5F2D;
+  --color-copper: #B87333;
+  --color-charcoal: #2C2C2C;
+  --color-oak: #F5F5DC;
 
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-playfair;
-  }
+  /* Fonts */
+  --font-playfair: "Playfair Display", serif;
+  --font-sans: "Inter", sans-serif;
 }
 
-@layer utilities {
-  .tap-target {
-    @apply min-h-[44px] min-w-[44px];
-  }
+body {
+  background-color: var(--color-oak);
+  font-family: var(--font-sans);
+  color: var(--color-charcoal);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-playfair);
+}
+
+.tap-target {
+  min-height: 44px;
+  min-width: 44px;
 }
