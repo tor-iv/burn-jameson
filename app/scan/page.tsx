@@ -6,6 +6,7 @@ import VideoStream from "@/components/video-stream";
 import { X, Info, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { generateSessionId, saveSession } from "@/lib/session-manager";
+import { saveBottleScan } from "@/lib/supabase-helpers";
 
 export default function ScanPage() {
   const router = useRouter();
@@ -40,12 +41,22 @@ export default function ScanPage() {
       const data = await response.json();
 
       if (data.detected && data.confidence > 0.75) {
-        // Bottle detected! Create session and navigate to burn animation
+        // Bottle detected! Create session and save to Supabase
         const sessionId = generateSessionId();
         saveSession(sessionId);
 
-        // TODO: Save bottle image to Supabase Storage
-        // TODO: Insert into bottle_scans table
+        // Save bottle scan to Supabase
+        const result = await saveBottleScan(
+          sessionId,
+          imageBlob,
+          data.brand || 'Jameson Irish Whiskey',
+          data.confidence
+        );
+
+        if (!result.success) {
+          console.error('Failed to save bottle scan:', result.error);
+          // Still proceed to animation even if save fails
+        }
 
         router.push(`/scanning/${sessionId}`);
       } else {

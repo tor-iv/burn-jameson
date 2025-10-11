@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Camera, Upload, X } from "lucide-react";
 import { motion } from "framer-motion";
+import { saveReceipt, validateSession } from "@/lib/supabase-helpers";
 
 export default function UploadPage() {
   const params = useParams();
@@ -15,6 +16,8 @@ export default function UploadPage() {
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [venmoUsername, setVenmoUsername] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sessionValid, setSessionValid] = useState(true);
+  const [validationError, setValidationError] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -23,7 +26,15 @@ export default function UploadPage() {
     if (savedVenmo) {
       setVenmoUsername(savedVenmo);
     }
-  }, []);
+
+    // Validate session
+    validateSession(sessionId).then(({ valid, error }) => {
+      if (!valid) {
+        setSessionValid(false);
+        setValidationError(error || "Invalid session");
+      }
+    });
+  }, [sessionId]);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -70,24 +81,49 @@ export default function UploadPage() {
   const isFormValid = receiptImage && venmoUsername && validateVenmo(venmoUsername);
 
   const handleSubmit = async () => {
-    if (!isFormValid) return;
+    if (!isFormValid || !receiptImage) return;
 
     setIsSubmitting(true);
 
     try {
-      // TODO: Upload receipt to Supabase Storage
-      // TODO: Insert into receipts table
+      // Upload receipt to Supabase
+      const result = await saveReceipt(
+        sessionId,
+        receiptImage,
+        venmoUsername
+      );
 
-      // Simulate upload delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      if (!result.success) {
+        throw new Error(result.error || 'Upload failed');
+      }
 
       router.push(`/confirmation/${sessionId}`);
     } catch (error) {
       console.error("Upload error:", error);
-      alert("Failed to upload. Please try again.");
+      alert(error instanceof Error ? error.message : "Failed to upload. Please try again.");
       setIsSubmitting(false);
     }
   };
+
+  // Show error if session is invalid
+  if (!sessionValid) {
+    return (
+      <div className="min-h-screen bg-charcoal flex flex-col items-center justify-center px-6 py-12">
+        <div className="text-center space-y-6 max-w-md">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-cream">Session Invalid</h2>
+          <p className="text-cream/70">{validationError}</p>
+          <Button
+            onClick={() => router.push('/scan')}
+            size="lg"
+            className="mt-4"
+          >
+            Scan Another Bottle
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-charcoal flex flex-col items-center justify-center px-6 py-12">
