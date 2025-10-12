@@ -16,8 +16,14 @@ export default function UploadPage() {
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [venmoUsername, setVenmoUsername] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [sessionValid, setSessionValid] = useState(true);
   const [validationError, setValidationError] = useState<string>("");
+  const [receiptValidation, setReceiptValidation] = useState<{
+    isValid: boolean;
+    hasKeepersHeart: boolean;
+    errors: string[];
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -36,15 +42,45 @@ export default function UploadPage() {
     });
   }, [sessionId]);
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       setReceiptImage(file);
+      setReceiptValidation(null); // Reset validation
+
       const reader = new FileReader();
       reader.onloadend = () => {
         setReceiptPreview(reader.result as string);
       };
       reader.readAsDataURL(file);
+
+      // Validate receipt with Google Vision API
+      setIsValidating(true);
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+
+        const response = await fetch('/api/validate-receipt', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          setReceiptValidation({
+            isValid: result.isValid,
+            hasKeepersHeart: result.hasKeepersHeart,
+            errors: result.errors || [],
+          });
+        } else {
+          console.error('Receipt validation failed:', result.error);
+        }
+      } catch (error) {
+        console.error('Receipt validation error:', error);
+      } finally {
+        setIsValidating(false);
+      }
     }
   };
 
@@ -78,7 +114,11 @@ export default function UploadPage() {
     return regex.test(username);
   };
 
-  const isFormValid = receiptImage && venmoUsername && validateVenmo(venmoUsername);
+  const isFormValid =
+    receiptImage &&
+    venmoUsername &&
+    validateVenmo(venmoUsername) &&
+    receiptValidation?.isValid;
 
   const handleSubmit = async () => {
     if (!isFormValid || !receiptImage) return;
@@ -162,18 +202,59 @@ export default function UploadPage() {
               <span className="text-lg">Tap to take photo</span>
             </button>
           ) : (
-            <div className="relative">
-              <img
-                src={receiptPreview}
-                alt="Receipt"
-                className="w-full h-48 object-cover rounded-xl"
-              />
-              <button
-                onClick={removeReceipt}
-                className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/80"
-              >
-                <X className="w-5 h-5" />
-              </button>
+            <div className="space-y-3">
+              <div className="relative">
+                <img
+                  src={receiptPreview}
+                  alt="Receipt"
+                  className="w-full h-48 object-cover rounded-xl"
+                />
+                <button
+                  onClick={removeReceipt}
+                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/80"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Validation Status */}
+              {isValidating && (
+                <div className="flex items-center gap-2 text-whiskey-amber text-sm">
+                  <div className="w-4 h-4 border-2 border-whiskey-amber border-t-transparent rounded-full animate-spin" />
+                  <span>Validating receipt...</span>
+                </div>
+              )}
+
+              {receiptValidation && !isValidating && (
+                <div
+                  className={`p-3 rounded-lg ${
+                    receiptValidation.isValid
+                      ? 'bg-emerald-500/20 border border-emerald-500/50'
+                      : 'bg-red-500/20 border border-red-500/50'
+                  }`}
+                >
+                  {receiptValidation.isValid ? (
+                    <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                      <span className="text-lg">✓</span>
+                      <span>Receipt validated! Keeper's Heart detected.</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-red-400 text-sm font-medium">
+                        <span className="text-lg">✗</span>
+                        <span>Receipt validation failed</span>
+                      </div>
+                      {receiptValidation.errors.length > 0 && (
+                        <ul className="text-red-300 text-xs space-y-1 ml-6">
+                          {receiptValidation.errors.map((error, idx) => (
+                            <li key={idx}>• {error}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
