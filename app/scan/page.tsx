@@ -53,7 +53,22 @@ export default function ScanPage() {
           // Store captured image and bounding box in sessionStorage
           sessionStorage.setItem(`bottle_image_${sessionId}`, base64Image);
           if (data.boundingBox) {
-            sessionStorage.setItem(`bottle_bbox_${sessionId}`, JSON.stringify(data.boundingBox));
+            sessionStorage.setItem(
+              `bottle_bbox_${sessionId}`,
+              JSON.stringify(data.boundingBox)
+            );
+          }
+          if (data.normalizedBoundingBox) {
+            sessionStorage.setItem(
+              `bottle_bbox_normalized_${sessionId}`,
+              JSON.stringify(data.normalizedBoundingBox)
+            );
+          }
+          if (data.expandedBoundingBox) {
+            sessionStorage.setItem(
+              `bottle_bbox_expanded_${sessionId}`,
+              JSON.stringify(data.expandedBoundingBox)
+            );
           }
         };
         reader.readAsDataURL(imageBlob);

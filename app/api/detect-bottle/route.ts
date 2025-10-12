@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import sharp from 'sharp';
 
 // Competitor brands we're targeting (16 total)
 const COMPETITOR_BRANDS = {
@@ -25,7 +26,80 @@ const COMPETITOR_BRANDS = {
   'four roses': 'Four Roses'
 };
 
-async function detectBottleWithVision(imageBuffer: Buffer) {
+interface NormalizedBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function normalizeBoundingPoly(
+  boundingPoly: any,
+  dimensions: { width?: number | null; height?: number | null }
+): NormalizedBoundingBox | null {
+  if (!boundingPoly) return null;
+
+  if (boundingPoly.normalizedVertices && boundingPoly.normalizedVertices.length >= 4) {
+    const xs = boundingPoly.normalizedVertices.map((v: any) => v.x ?? 0);
+    const ys = boundingPoly.normalizedVertices.map((v: any) => v.y ?? 0);
+    const minX = Math.max(0, Math.min(...xs));
+    const maxX = Math.min(1, Math.max(...xs));
+    const minY = Math.max(0, Math.min(...ys));
+    const maxY = Math.min(1, Math.max(...ys));
+
+    return {
+      x: minX,
+      y: minY,
+      width: Math.max(0, maxX - minX),
+      height: Math.max(0, maxY - minY),
+    };
+  }
+
+  const { width, height } = dimensions;
+  if (!width || !height) return null;
+
+  const vertices = boundingPoly.vertices;
+  if (!vertices || vertices.length < 4) return null;
+
+  const xs = vertices.map((v: any) => v.x ?? 0);
+  const ys = vertices.map((v: any) => v.y ?? 0);
+  const minX = Math.max(0, Math.min(...xs));
+  const maxX = Math.max(0, Math.max(...xs));
+  const minY = Math.max(0, Math.min(...ys));
+  const maxY = Math.max(0, Math.max(...ys));
+
+  return {
+    x: minX / width,
+    y: minY / height,
+    width: Math.max(0, (maxX - minX) / width),
+    height: Math.max(0, (maxY - minY) / height),
+  };
+}
+
+function expandNormalizedBox(box: NormalizedBoundingBox | null, expandX = 1.6, expandY = 1.8) {
+  if (!box) return null;
+
+  const centerX = box.x + box.width / 2;
+  const centerY = box.y + box.height / 2;
+  const width = Math.min(0.95, box.width * expandX);
+  const height = Math.min(0.95, box.height * expandY);
+  const clampedWidth = Math.max(width, 0.35);
+  const clampedHeight = Math.max(height, 0.55);
+  const x = Math.min(Math.max(centerX - clampedWidth / 2, 0.025), 1 - clampedWidth - 0.025);
+  const y = Math.min(Math.max(centerY - clampedHeight / 2, 0.05), 1 - clampedHeight - 0.05);
+
+  return {
+    x,
+    y,
+    width: clampedWidth,
+    height: clampedHeight,
+  };
+}
+
+async function detectBottleWithVision(
+  imageBuffer: Buffer,
+  dimensions: { width?: number | null; height?: number | null }
+) {
   const apiKey = process.env.GOOGLE_VISION_API_KEY;
 
   if (!apiKey) {
@@ -53,6 +127,7 @@ async function detectBottleWithVision(imageBuffer: Buffer) {
               { type: 'LABEL_DETECTION', maxResults: 50 },
               { type: 'TEXT_DETECTION', maxResults: 50 },
               { type: 'LOGO_DETECTION', maxResults: 10 },
+              { type: 'OBJECT_LOCALIZATION', maxResults: 10 }, // Better bounding boxes
             ],
           },
         ],
@@ -87,6 +162,18 @@ async function detectBottleWithVision(imageBuffer: Buffer) {
     boundingPoly: l.boundingPoly
   })) || [];
 
+  // Get localized objects (bottles, etc.) with normalized bounding boxes
+  const localizedObjects = result.localizedObjectAnnotations?.map((obj: any) => ({
+    name: obj.name,
+    score: obj.score,
+    boundingPoly: obj.boundingPoly
+  })) || [];
+
+  // Find bottle object for better bounding box fallback
+  const bottleObject = localizedObjects.find((obj: any) =>
+    obj.name?.toLowerCase().includes('bottle')
+  );
+
   // Check for competitor brands in text, labels, and logos
   let detectedBrand = null;
   let brandConfidence = 0;
@@ -108,13 +195,20 @@ async function detectBottleWithVision(imageBuffer: Buffer) {
 
   // Then check text detections
   if (!detectedBrand) {
-    const fullText = detectedTexts.join(' ');
+    // Search through individual text annotations to find the one matching our brand
     for (const [keyword, brandName] of Object.entries(COMPETITOR_BRANDS)) {
-      if (fullText.includes(keyword)) {
+      // Find the specific text annotation that contains this brand keyword
+      const matchingAnnotation = textAnnotations.find((t: any) => {
+        const text = t.description?.toLowerCase() || '';
+        return text.includes(keyword);
+      });
+
+      if (matchingAnnotation) {
         detectedBrand = brandName;
-        brandConfidence = 0.75; // Good confidence for text match
-        // Use the first text annotation's bounding box (full text block)
-        boundingBox = textAnnotations[0]?.boundingPoly;
+        brandConfidence = 0.85; // High confidence for text match
+        // Use the specific text annotation's bounding box
+        boundingBox = matchingAnnotation.boundingPoly;
+        console.log(`Found ${brandName} in text annotation:`, matchingAnnotation.description);
         break;
       }
     }
@@ -128,11 +222,22 @@ async function detectBottleWithVision(imageBuffer: Buffer) {
         if (desc.includes(keyword)) {
           detectedBrand = brandName;
           brandConfidence = label.score;
+          // No bounding box from labels, but use bottle object if available
+          if (bottleObject) {
+            boundingBox = bottleObject.boundingPoly;
+            console.log('Using bottle object bounding box as fallback');
+          }
           break;
         }
       }
       if (detectedBrand) break;
     }
+  }
+
+  // If we found a brand but no bounding box, try to use bottle object localization
+  if (detectedBrand && !boundingBox && bottleObject) {
+    boundingBox = bottleObject.boundingPoly;
+    console.log('Applied bottle object bounding box to detected brand:', detectedBrand);
   }
 
   // Check for generic whiskey bottle indicators
@@ -144,15 +249,37 @@ async function detectBottleWithVision(imageBuffer: Buffer) {
     return desc.includes('whiskey') || desc.includes('whisky') || desc.includes('bourbon');
   });
 
+  const normalizedBoundingBox = normalizeBoundingPoly(boundingBox, dimensions);
+
+  // Debug logging
+  console.log('Detection Summary:', {
+    brand: detectedBrand,
+    confidence: brandConfidence,
+    hasBoundingBox: !!boundingBox,
+    boundingBoxSource: boundingBox ? 'found' : 'missing',
+    bottleObjectFound: !!bottleObject,
+    normalizedBox: normalizedBoundingBox,
+    imageDimensions: dimensions,
+  });
+
   return {
     detected: !!detectedBrand,
     brand: detectedBrand || 'Unknown',
     confidence: brandConfidence,
     boundingBox: boundingBox, // Bounding polygon vertices
+    normalizedBoundingBox,
+    expandedBoundingBox: expandNormalizedBox(normalizedBoundingBox),
     hasBottle,
     hasWhiskey,
     labels: labels.map((l: { description: string; score: number }) => l.description).filter(Boolean),
     detectedText: detectedTexts[0] || '', // Full text from image
+    // Debug info (remove in production)
+    _debug: {
+      logoCount: logos.length,
+      textAnnotationCount: textAnnotations.length,
+      localizedObjectCount: localizedObjects.length,
+      bottleObjectScore: bottleObject?.score,
+    }
   };
 }
 
@@ -198,8 +325,14 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await image.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
+    // Determine image dimensions for bounding box normalization
+    const metadata = await sharp(buffer).metadata();
+
     // Call Google Vision API
-    const detectionResult = await detectBottleWithVision(buffer);
+    const detectionResult = await detectBottleWithVision(buffer, {
+      width: metadata.width,
+      height: metadata.height,
+    });
 
     return NextResponse.json({
       ...detectionResult,

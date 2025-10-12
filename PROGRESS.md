@@ -67,21 +67,29 @@
 
 ---
 
-## Phase 2: ML & AI Integration 🔄 40% Complete
+## Phase 2: ML & AI Integration 🔄 65% Complete
 
 ### Google Vision API Setup
-- [ ] 🔄 👤 **IN PROGRESS** Create Google Cloud project
-- [ ] 📋 👤 Enable Vision API in GCP console
-- [ ] 📋 👤 Create service account with Vision API permissions
-- [ ] 📋 👤 Download service account JSON key
-- [ ] 📋 👤 Add credentials to .env.local
-- [ ] 📋 🤖 Install @google-cloud/vision npm package
-- [ ] 📋 🤖 Implement bottle detection with Vision API
-- [ ] 📋 🤖 Implement receipt OCR with Vision API
-- [ ] 📋 🤖 Add confidence threshold configuration
-- [ ] 📋 🤖 Update detect-bottle API with real ML
+- [x] ✅ Create Google Cloud project
+- [x] ✅ Enable Vision API in GCP console
+- [x] ✅ Create service account with Vision API permissions
+- [x] ✅ Download service account JSON key
+- [x] ✅ Add credentials to .env.local
+- [x] ✅ Install @google-cloud/vision npm package
+- [x] ✅ Implement bottle detection with Vision API
+- [x] ✅ Implement receipt OCR with Vision API
+- [x] ✅ Add confidence threshold configuration
+- [x] ✅ Update detect-bottle API with real ML
 - [ ] 📋 👤 Test bottle detection with real photos
 - [ ] 📋 👤 Test receipt validation with real receipts
+
+### AR/Animation Issues 🔄
+- [ ] 📋 🤖 **FIX NEEDED** Resize detection overlay to match bottle height/width (currently too small)
+- [ ] 📋 🤖 **FIX NEEDED** Realign burn animation so it stays centered on the detected bottle
+- [ ] 📋 🤖 Ensure burn effect fills the entire bottle silhouette
+- [ ] 📋 🤖 Improve visual feedback during scanning (progress/loading states)
+- [ ] 📋 🤖 Add explicit "Continue" button or extend burn duration before auto-advance
+- [ ] 📋 👤 Test animation on real devices after adjustments
 
 **Estimated Time:** 2-3 hours
 **Method:** Setup 👤 Manual (30 min), Integration 🤖 Claude Code (1.5 hrs), Testing 👤 Manual (30 min)
@@ -253,26 +261,28 @@
 
 ---
 
-## 🎯 Current Sprint: Production Integration
+## 🎯 Current Sprint: Animation Fixes & Payment Integration
 
 ### Active Tasks (Next 2-3 Days)
 
-#### 1. Google Vision API Integration 🔄
-**Status:** Ready to start
-**Owner:** 👤 You (setup) + 🤖 Claude Code (implementation)
-**Time:** ~3 hours total
+#### 1. Fix Bottle Scanning Animation 🔄
+**Status:** Ready to fix
+**Owner:** 🤖 Claude Code
+**Time:** ~2 hours
+
+**Issues:**
+- Bounding box too small (not covering bottle)
+- Burn effect barely visible
+- Poor visual feedback during scan
+- Animation not properly overlaying on bottle
 
 **Steps:**
-1. [ ] 👤 Create Google Cloud project (15 min)
-2. [ ] 👤 Enable Vision API (5 min)
-3. [ ] 👤 Create service account (10 min)
-4. [ ] 👤 Download JSON key (2 min)
-5. [ ] 👤 Add to .env.local (2 min)
-6. [ ] 🤖 Install npm package (1 min)
-7. [ ] 🤖 Implement bottle detection (30 min)
-8. [ ] 🤖 Implement receipt validation (30 min)
-9. [ ] 🤖 Add error handling (15 min)
-10. [ ] 👤 Test with real photos (30 min)
+1. [ ] 🤖 Debug bounding box calculation in scan page
+2. [ ] 🤖 Increase bounding box size (2x-3x larger)
+3. [ ] 🤖 Fix burn effect animation positioning
+4. [ ] 🤖 Improve scanning indicator visibility
+5. [ ] 🤖 Add better visual feedback during detection
+6. [ ] 👤 Test animation on real device
 
 #### 2. PayPal Payouts API Integration 🔄
 **Status:** Ready to implement
@@ -304,10 +314,10 @@
 
 | Category | Progress | Status |
 |----------|----------|--------|
-| **Frontend UI** | ████████░░ 85% | Near complete |
+| **Frontend UI** | ███████░░░ 75% | Animation fixes needed |
 | **Database** | ██████████ 100% | Complete |
 | **Image Validation** | ██████████ 100% | Complete |
-| **ML/AI Integration** | ███░░░░░░░ 30% | In progress |
+| **ML/AI Integration** | ██████░░░░ 65% | Receipt validation done |
 | **Payment Integration** | ░░░░░░░░░░ 0% | Not started |
 | **Legal/Compliance** | ░░░░░░░░░░ 0% | Not started |
 | **Testing** | ████░░░░░░ 40% | Ongoing |
@@ -341,6 +351,9 @@
 ## 📝 Notes & Decisions
 
 ### Completed Milestones
+- **2025-10-11:** Receipt upload flow approved end-to-end ✅
+- **2025-10-11:** Google Vision API receipt verification implemented ✅
+- **2025-10-11:** Bottle upload with Vision API integrated ✅
 - **2025-10-11:** Image validation implemented ✅
 - **2025-10-11:** Supabase storage configured ✅
 - **2025-10-11:** End-to-end testing passed ✅
@@ -352,8 +365,13 @@
 - **Launch Date:** TBD (after payment integration)
 - **Marketing Campaign:** TBD
 
+### Known Issues
+- **Animation Alignment:** Detection overlay is too small and off-center compared to the actual bottle
+- **Burn Effect Visibility:** Effect sits off the bottle and ends before users can see it; needs longer duration or manual continue button
+- **Visual Feedback:** Scanning lacks clear progress indicators
+
 ### Blockers
-- None currently! Ready to proceed with Google Vision API
+- None currently! Vision API working, animation needs refinement
 
 ---
 
