@@ -287,8 +287,9 @@ async function validateReceiptWithVision(imageBuffer: Buffer): Promise<ReceiptVa
   const datePatterns = [
     /\d{1,2}[-\/\.]\d{1,2}[-\/\.](20\d{2})/, // MM/DD/2025 (capture year)
     /(20\d{2})[-\/\.]\d{1,2}[-\/\.]\d{1,2}/, // 2025-MM-DD (capture year)
-    /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}[,\s]+(20\d{2})/, // Jan 15, 2025
-    /\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(20\d{2})/, // 15 Jan 2025
+    /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}[,\s]+(20\d{2})/i, // Jan 15, 2025
+    /\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(20\d{2})/i, // 15 Jan 2025
+    /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}[-\/](\d{2})(?!\d)/i, // Oct 11/25 (month + day/year)
     /\d{1,2}[-\/]\d{1,2}[-\/](\d{2})(?!\d)/, // MM/DD/25 (2-digit year)
   ];
 
@@ -304,11 +305,11 @@ async function validateReceiptWithVision(imageBuffer: Buffer): Promise<ReceiptVa
       // Try to parse the date for freshness check
       try {
         const dateStr = match[0];
-        const yearMatch = match[1]; // Captured year group
+        const yearMatch = match[1] || match[2]; // Captured year group (could be in different positions)
 
         if (yearMatch) {
           let year = parseInt(yearMatch);
-          // Convert 2-digit year to 4-digit
+          // Convert 2-digit year to 4-digit (assume 2000s)
           if (year < 100) {
             year += 2000;
           }
@@ -316,13 +317,31 @@ async function validateReceiptWithVision(imageBuffer: Buffer): Promise<ReceiptVa
           const now = new Date();
           const currentYear = now.getFullYear();
 
-          // Check if year is reasonable (within 1 year)
-          if (year >= currentYear - 1 && year <= currentYear) {
-            receiptDate = new Date(dateStr);
+          // Check if year is reasonable (current year or last year)
+          // Allow future dates within next 7 days (clock drift, timezone issues)
+          if (year >= currentYear - 1 && year <= currentYear + 1) {
+            // Try to create a proper Date object
+            // For formats like "Oct 11/25", we need to parse manually
+            const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+            const monthMatch = dateStr.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i);
+
+            if (monthMatch) {
+              const monthIndex = monthNames.indexOf(monthMatch[0].toLowerCase());
+              const dayMatch = dateStr.match(/\d{1,2}/);
+              const day = dayMatch ? parseInt(dayMatch[0]) : 1;
+
+              receiptDate = new Date(year, monthIndex, day);
+            } else {
+              // Try standard Date parsing
+              receiptDate = new Date(dateStr.replace(/[-\/]/g, '/'));
+            }
+
+            console.log(`📅 Parsed date: ${dateStr} → ${receiptDate?.toLocaleDateString()}`);
             break;
           }
         }
       } catch (e) {
+        console.warn('Date parsing error:', e);
         // Continue if parsing fails
       }
     }
@@ -331,14 +350,18 @@ async function validateReceiptWithVision(imageBuffer: Buffer): Promise<ReceiptVa
   if (!hasDate) {
     errors.push('No date found on receipt');
   } else if (receiptDate && !isNaN(receiptDate.getTime())) {
-    // Check if receipt is within last 30 days
+    // Check if receipt is within acceptable timeframe
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    console.log(`📅 Date validation: Receipt date ${receiptDate.toLocaleDateString()}, 30 days ago: ${thirtyDaysAgo.toLocaleDateString()}, Now: ${now.toLocaleDateString()}`);
 
     if (receiptDate < thirtyDaysAgo) {
       errors.push('Receipt is too old (must be within last 30 days)');
-    } else if (receiptDate > now) {
-      errors.push('Receipt date is in the future');
+    } else if (receiptDate > sevenDaysFromNow) {
+      // Allow up to 7 days in future (timezone issues, clock drift)
+      errors.push('Receipt date appears invalid (too far in the future)');
     }
   }
 
