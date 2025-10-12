@@ -14,7 +14,7 @@ export default function UploadPage() {
 
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
-  const [venmoUsername, setVenmoUsername] = useState("");
+  const [paypalEmail, setPaypalEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [sessionValid, setSessionValid] = useState(true);
@@ -27,10 +27,10 @@ export default function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // Load saved Venmo username
-    const savedVenmo = localStorage.getItem("kh_venmo");
-    if (savedVenmo) {
-      setVenmoUsername(savedVenmo);
+    // Load saved PayPal email
+    const savedEmail = localStorage.getItem("kh_paypal_email");
+    if (savedEmail) {
+      setPaypalEmail(savedEmail);
     }
 
     // Validate session
@@ -93,31 +93,26 @@ export default function UploadPage() {
     setReceiptPreview(null);
   };
 
-  const handleVenmoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value;
-    // Auto-prefix with @
-    if (!value.startsWith("@") && value.length > 0) {
-      value = "@" + value;
-    }
-    setVenmoUsername(value);
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPaypalEmail(e.target.value);
   };
 
-  const handleVenmoBlur = () => {
+  const handleEmailBlur = () => {
     // Save to localStorage
-    if (venmoUsername) {
-      localStorage.setItem("kh_venmo", venmoUsername);
+    if (paypalEmail) {
+      localStorage.setItem("kh_paypal_email", paypalEmail);
     }
   };
 
-  const validateVenmo = (username: string) => {
-    const regex = /^@[a-zA-Z0-9_-]{1,30}$/;
-    return regex.test(username);
+  const validateEmail = (email: string) => {
+    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return regex.test(email);
   };
 
   const isFormValid =
     receiptImage &&
-    venmoUsername &&
-    validateVenmo(venmoUsername) &&
+    paypalEmail &&
+    validateEmail(paypalEmail) &&
     receiptValidation?.isValid;
 
   const handleSubmit = async () => {
@@ -130,7 +125,7 @@ export default function UploadPage() {
       const result = await saveReceipt(
         sessionId,
         receiptImage,
-        venmoUsername
+        paypalEmail
       );
 
       if (!result.success) {
@@ -237,26 +232,29 @@ export default function UploadPage() {
           )}
         </div>
 
-        {/* Venmo Input */}
+        {/* PayPal Email Input */}
         <div className="space-y-2">
-          <label htmlFor="venmo" className="block text-cream font-medium">
-            Your Venmo
+          <label htmlFor="paypal" className="block text-cream font-medium">
+            Where should we send your $5?
           </label>
           <input
-            id="venmo"
-            type="text"
-            placeholder="@username"
-            value={venmoUsername}
-            onChange={handleVenmoChange}
-            onBlur={handleVenmoBlur}
+            id="paypal"
+            type="email"
+            placeholder="your@email.com"
+            value={paypalEmail}
+            onChange={handleEmailChange}
+            onBlur={handleEmailBlur}
             className="w-full h-14 px-4 bg-charcoal/50 border-2 border-whiskey-amber/50 rounded-xl text-cream text-lg focus:outline-none focus:border-whiskey-amber transition-colors"
-            autoComplete="off"
+            autoComplete="email"
           />
-          {venmoUsername && !validateVenmo(venmoUsername) && (
+          {paypalEmail && !validateEmail(paypalEmail) && (
             <p className="text-red-400 text-sm">
-              Username should look like @yourname
+              Please enter a valid email address
             </p>
           )}
+          <p className="text-cream/50 text-sm">
+            💸 Sent via PayPal in 1-2 days. Don't have PayPal? No problem—we'll email you instructions to claim your money.
+          </p>
         </div>
 
         {/* Submit Button */}

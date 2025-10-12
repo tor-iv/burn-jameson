@@ -10,7 +10,7 @@ interface PendingReceipt {
   id: string;
   session_id: string;
   image_url: string;
-  venmo_username: string;
+  paypal_email: string;
   uploaded_at: string;
   rebate_amount: number;
   bottle_scans?: {
@@ -94,35 +94,58 @@ export default function AdminDashboard() {
     const receipt = receipts[currentIndex];
     if (!receipt) return;
 
-    // Update status to approved
-    const { error } = await supabase
-      .from('receipts')
-      .update({
-        status: 'approved',
-        admin_notes: 'Manually approved'
-      })
-      .eq('id', receipt.id);
+    const confirmPayout = confirm(
+      `Send $${(receipt.rebate_amount || 5.00).toFixed(2)} to ${receipt.paypal_email}?`
+    );
 
-    if (error) {
-      alert('Error approving receipt: ' + error.message);
-      return;
-    }
+    if (!confirmPayout) return;
 
-    // Open Venmo with pre-filled payment
-    const venmoUsername = receipt.venmo_username.replace('@', '');
-    const amount = receipt.rebate_amount || 5.00;
-    const venmoUrl = `venmo://paycharge?txn=pay&recipients=${venmoUsername}&amount=${amount.toFixed(2)}&note=Burn That Ad rebate`;
+    try {
+      // Step 1: Update status to approved
+      const { error: approveError } = await supabase
+        .from('receipts')
+        .update({
+          status: 'approved',
+          admin_notes: 'Approved - processing payout'
+        })
+        .eq('id', receipt.id);
 
-    // Try to open Venmo app, fallback to web
-    window.open(venmoUrl, '_blank');
+      if (approveError) {
+        alert('Error approving receipt: ' + approveError.message);
+        return;
+      }
 
-    // Remove from list
-    const updatedReceipts = receipts.filter((_, index) => index !== currentIndex);
-    setReceipts(updatedReceipts);
+      // Step 2: Trigger PayPal payout via API
+      const payoutResponse = await fetch('/api/paypal-payout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          receiptId: receipt.id,
+          paypalEmail: receipt.paypal_email,
+          amount: receipt.rebate_amount || 5.00,
+        }),
+      });
 
-    // Adjust index if needed
-    if (currentIndex >= updatedReceipts.length && currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
+      const payoutResult = await payoutResponse.json();
+
+      if (!payoutResponse.ok) {
+        alert(`Payout failed: ${payoutResult.error}\n\nReceipt marked as approved but payment not sent. Please retry or process manually.`);
+        return;
+      }
+
+      alert(`✓ Payout sent!\n\nAmount: $${payoutResult.amount}\nEmail: ${payoutResult.paypalEmail}\nPayout ID: ${payoutResult.payoutId}\n\nFunds will arrive in 1-2 business days.`);
+
+      // Remove from pending list
+      const updatedReceipts = receipts.filter((_, index) => index !== currentIndex);
+      setReceipts(updatedReceipts);
+
+      // Adjust index if needed
+      if (currentIndex >= updatedReceipts.length && currentIndex > 0) {
+        setCurrentIndex(currentIndex - 1);
+      }
+    } catch (error) {
+      console.error('Payout error:', error);
+      alert('Failed to process payout: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -207,7 +230,7 @@ export default function AdminDashboard() {
           <div className="mb-6 text-cream/70 space-y-1">
             <div className="font-mono text-sm">Session: {receipt.session_id}</div>
             <div>Uploaded: {new Date(receipt.uploaded_at).toLocaleString()}</div>
-            <div>Venmo: <span className="text-whiskey-amber font-semibold">{receipt.venmo_username}</span></div>
+            <div>PayPal: <span className="text-whiskey-amber font-semibold">{receipt.paypal_email}</span></div>
             <div>Amount: <span className="text-green-400 font-semibold">${receipt.rebate_amount?.toFixed(2) || '5.00'}</span></div>
           </div>
 
