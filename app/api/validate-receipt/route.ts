@@ -16,6 +16,46 @@ const RECEIPT_KEYWORDS = [
 // Brand name to verify (case-insensitive)
 const REQUIRED_BRAND = "keeper's heart";
 
+// Fuzzy string matching - calculate similarity between two strings
+function fuzzyMatch(str1: string, str2: string): number {
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+
+  if (longer.length === 0) return 1.0;
+
+  const editDistance = levenshteinDistance(longer, shorter);
+  return (longer.length - editDistance) / longer.length;
+}
+
+// Calculate Levenshtein distance (edit distance between strings)
+function levenshteinDistance(str1: string, str2: string): number {
+  const matrix: number[][] = [];
+
+  for (let i = 0; i <= str2.length; i++) {
+    matrix[i] = [i];
+  }
+
+  for (let j = 0; j <= str1.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= str2.length; i++) {
+    for (let j = 1; j <= str1.length; j++) {
+      if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        );
+      }
+    }
+  }
+
+  return matrix[str2.length][str1.length];
+}
+
 interface FraudCheckResult {
   isLikelyRealPhoto: boolean;
   warnings: string[];
@@ -97,9 +137,10 @@ async function checkImageProperties(imageBuffer: Buffer): Promise<FraudCheckResu
   }
 
   // Check for very uniform colors (screenshots tend to be too clean)
+  // Relaxed from < 5 to < 3 to avoid false positives on white receipts
   const colors = result.imagePropertiesAnnotation?.dominantColors?.colors || [];
-  if (colors.length < 5) {
-    warnings.push('Image has too few colors (may be edited or digital)');
+  if (colors.length < 3) {
+    warnings.push('Image has suspiciously few colors (may be edited or digital)');
   }
 
   console.log('🔍 Fraud Check Results:', {
@@ -160,12 +201,35 @@ async function validateReceiptWithVision(imageBuffer: Buffer): Promise<ReceiptVa
   const fullText = result.fullTextAnnotation?.text || '';
   const normalizedText = fullText.toLowerCase();
 
-  // Check for "Keeper's Heart" (case-insensitive, flexible spacing)
-  const hasKeepersHeart =
-    normalizedText.includes("keeper's heart") ||
-    normalizedText.includes("keepers heart") ||
-    normalizedText.includes("keeper heart") ||
-    normalizedText.includes("keepersheart");
+  // Check for "Keeper's Heart" with fuzzy matching (handles OCR errors)
+  const brandVariants = [
+    "keeper's heart",
+    "keepers heart",
+    "keeper heart",
+    "keepersheart",
+    "keeper s heart",
+    "keeper 's heart"
+  ];
+
+  // First check exact matches
+  let hasKeepersHeart = brandVariants.some(variant => normalizedText.includes(variant));
+
+  // If no exact match, try fuzzy matching on text segments
+  if (!hasKeepersHeart) {
+    // Split text into words and check consecutive word pairs
+    const words = normalizedText.split(/\s+/);
+    for (let i = 0; i < words.length - 1; i++) {
+      const bigram = `${words[i]} ${words[i + 1]}`;
+      const similarity = fuzzyMatch(bigram, "keepers heart");
+
+      // 85% similarity threshold (allows 2-3 character errors)
+      if (similarity >= 0.85) {
+        hasKeepersHeart = true;
+        console.log(`✅ Fuzzy match found: "${bigram}" (${(similarity * 100).toFixed(1)}% similar)`);
+        break;
+      }
+    }
+  }
 
   // Check for receipt keywords
   const matchedKeywords = RECEIPT_KEYWORDS.filter(keyword =>
@@ -219,21 +283,63 @@ async function validateReceiptWithVision(imageBuffer: Buffer): Promise<ReceiptVa
     errors.push('No price or total amount found on receipt');
   }
 
-  // 5. Check for date - support multiple formats
+  // 5. Check for date - support multiple formats and verify freshness
   const datePatterns = [
-    /\d{1,2}[-\/\.]\d{1,2}[-\/\.]\d{2,4}/, // MM/DD/YYYY, MM-DD-YYYY, MM.DD.YYYY
-    /\d{4}[-\/\.]\d{1,2}[-\/\.]\d{1,2}/, // YYYY-MM-DD
-    /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}[,\s]+\d{2,4}/, // Jan 15, 2025
-    /\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{2,4}/, // 15 Jan 2025
-    /(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}/, // January 15
-    /\d{1,2}[-\/]\d{1,2}(?!\d)/, // MM/DD without year
-    /(date|time)[:\s]+\d{1,2}[-\/\.]\d{1,2}/, // "Date: MM/DD"
+    /\d{1,2}[-\/\.]\d{1,2}[-\/\.](20\d{2})/, // MM/DD/2025 (capture year)
+    /(20\d{2})[-\/\.]\d{1,2}[-\/\.]\d{1,2}/, // 2025-MM-DD (capture year)
+    /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}[,\s]+(20\d{2})/, // Jan 15, 2025
+    /\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(20\d{2})/, // 15 Jan 2025
+    /\d{1,2}[-\/]\d{1,2}[-\/](\d{2})(?!\d)/, // MM/DD/25 (2-digit year)
   ];
 
-  const hasDate = datePatterns.some(pattern => normalizedText.match(pattern));
+  let hasDate = false;
+  let receiptDate: Date | null = null;
+
+  // Try to extract and parse date
+  for (const pattern of datePatterns) {
+    const match = normalizedText.match(pattern);
+    if (match) {
+      hasDate = true;
+
+      // Try to parse the date for freshness check
+      try {
+        const dateStr = match[0];
+        const yearMatch = match[1]; // Captured year group
+
+        if (yearMatch) {
+          let year = parseInt(yearMatch);
+          // Convert 2-digit year to 4-digit
+          if (year < 100) {
+            year += 2000;
+          }
+
+          const now = new Date();
+          const currentYear = now.getFullYear();
+
+          // Check if year is reasonable (within 1 year)
+          if (year >= currentYear - 1 && year <= currentYear) {
+            receiptDate = new Date(dateStr);
+            break;
+          }
+        }
+      } catch (e) {
+        // Continue if parsing fails
+      }
+    }
+  }
 
   if (!hasDate) {
     errors.push('No date found on receipt');
+  } else if (receiptDate && !isNaN(receiptDate.getTime())) {
+    // Check if receipt is within last 30 days
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    if (receiptDate < thirtyDaysAgo) {
+      errors.push('Receipt is too old (must be within last 30 days)');
+    } else if (receiptDate > now) {
+      errors.push('Receipt date is in the future');
+    }
   }
 
   // 6. Check for merchant/store name or business indicators (more lenient)
@@ -293,8 +399,53 @@ async function validateReceiptWithVision(imageBuffer: Buffer): Promise<ReceiptVa
   };
 }
 
+// Simple in-memory rate limiter
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+function checkRateLimit(identifier: string, maxRequests: number = 5, windowMs: number = 60000): boolean {
+  const now = Date.now();
+  const limitData = rateLimitMap.get(identifier);
+
+  if (!limitData || now > limitData.resetTime) {
+    // Reset or create new limit
+    rateLimitMap.set(identifier, { count: 1, resetTime: now + windowMs });
+    return true;
+  }
+
+  if (limitData.count >= maxRequests) {
+    return false; // Rate limit exceeded
+  }
+
+  limitData.count++;
+  return true;
+}
+
+// Clean up old entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of rateLimitMap.entries()) {
+    if (now > value.resetTime) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting - 5 requests per minute per IP
+    const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
+
+    if (!checkRateLimit(ip, 5, 60000)) {
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: 'Too many validation requests. Please wait a minute and try again.',
+          retryAfter: 60
+        },
+        { status: 429 }
+      );
+    }
+
     // Get the image from the request
     const formData = await request.formData();
     const image = formData.get('image') as Blob;
@@ -306,11 +457,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Basic image validation
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    // Basic image validation - support common formats
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+    const unsupportedButCommon = ['image/heic', 'image/heif']; // iPhones use HEIC
+
+    if (unsupportedButCommon.includes(image.type)) {
+      return NextResponse.json(
+        {
+          error: 'iPhone HEIC format detected',
+          message: 'Please convert to JPG or PNG. On iPhone: Go to Settings > Camera > Formats > Select "Most Compatible"',
+          tip: 'Or use a converter app before uploading'
+        },
+        { status: 400 }
+      );
+    }
+
     if (!validTypes.includes(image.type)) {
       return NextResponse.json(
-        { error: 'Invalid image format' },
+        {
+          error: 'Invalid image format',
+          message: `Please upload JPG, PNG, or WebP format. You uploaded: ${image.type}`,
+          validFormats: ['JPG', 'PNG', 'WebP']
+        },
         { status: 400 }
       );
     }

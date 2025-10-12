@@ -93,10 +93,19 @@ export async function saveReceipt(
   try {
     // Validate image type
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    const unsupportedButCommon = ['image/heic', 'image/heif'];
+
+    if (unsupportedButCommon.includes(receiptImage.type)) {
+      return {
+        success: false,
+        error: 'iPhone HEIC format not supported. On iPhone: Settings > Camera > Formats > Select "Most Compatible"'
+      };
+    }
+
     if (!validTypes.includes(receiptImage.type)) {
       return {
         success: false,
-        error: 'Invalid image format. Please upload JPG, PNG, or WebP.'
+        error: `Invalid image format (${receiptImage.type}). Please upload JPG, PNG, or WebP.`
       };
     }
 
