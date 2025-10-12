@@ -68,10 +68,11 @@ async function detectBottleWithVision(imageBuffer: Buffer) {
   const data = await response.json();
   const result = data.responses[0];
 
-  // Combine all text detections
-  const detectedTexts = result.textAnnotations?.map((t: any) =>
+  // Combine all text detections (with bounding boxes)
+  const textAnnotations = result.textAnnotations || [];
+  const detectedTexts = textAnnotations.map((t: any) =>
     t.description?.toLowerCase() || ''
-  ) || [];
+  );
 
   // Get labels
   const labels = result.labelAnnotations?.map((l: any) => ({
@@ -79,15 +80,17 @@ async function detectBottleWithVision(imageBuffer: Buffer) {
     score: l.score
   })) || [];
 
-  // Get logos
+  // Get logos (with bounding boxes)
   const logos = result.logoAnnotations?.map((l: any) => ({
     description: l.description,
-    score: l.score
+    score: l.score,
+    boundingPoly: l.boundingPoly
   })) || [];
 
   // Check for competitor brands in text, labels, and logos
   let detectedBrand = null;
   let brandConfidence = 0;
+  let boundingBox = null;
 
   // First check logos (most reliable)
   for (const logo of logos) {
@@ -96,6 +99,7 @@ async function detectBottleWithVision(imageBuffer: Buffer) {
       if (desc.includes(keyword)) {
         detectedBrand = brandName;
         brandConfidence = logo.score;
+        boundingBox = logo.boundingPoly;
         break;
       }
     }
@@ -109,6 +113,8 @@ async function detectBottleWithVision(imageBuffer: Buffer) {
       if (fullText.includes(keyword)) {
         detectedBrand = brandName;
         brandConfidence = 0.75; // Good confidence for text match
+        // Use the first text annotation's bounding box (full text block)
+        boundingBox = textAnnotations[0]?.boundingPoly;
         break;
       }
     }
@@ -142,6 +148,7 @@ async function detectBottleWithVision(imageBuffer: Buffer) {
     detected: !!detectedBrand,
     brand: detectedBrand || 'Unknown',
     confidence: brandConfidence,
+    boundingBox: boundingBox, // Bounding polygon vertices
     hasBottle,
     hasWhiskey,
     labels: labels.map((l: { description: string; score: number }) => l.description).filter(Boolean),

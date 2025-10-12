@@ -221,12 +221,30 @@ export default function UploadPage() {
               )}
 
               {receiptValidation && !isValidating && (
-                <div className="p-3 rounded-lg bg-emerald-500/20 border border-emerald-500/50">
-                  <div className="flex items-center gap-2 text-emerald-400 text-sm">
-                    <span className="text-lg">✓</span>
-                    <span>Receipt scanned successfully</span>
-                  </div>
-                </div>
+                <>
+                  {receiptValidation.isValid ? (
+                    <div className="p-3 rounded-lg bg-emerald-500/20 border border-emerald-500/50">
+                      <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                        <span className="text-lg">✓</span>
+                        <span>Receipt verified - ready to submit!</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-lg bg-red-500/20 border border-red-500/50">
+                      <div className="text-red-400 text-sm space-y-1">
+                        <div className="flex items-center gap-2 font-semibold">
+                          <span className="text-lg">⚠</span>
+                          <span>Receipt validation failed:</span>
+                        </div>
+                        <ul className="list-disc list-inside pl-6 space-y-1">
+                          {receiptValidation.errors.map((error, i) => (
+                            <li key={i}>{error}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

@@ -45,6 +45,19 @@ export default function ScanPage() {
         const sessionId = generateSessionId();
         saveSession(sessionId);
 
+        // Convert blob to base64 for storage
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64Image = reader.result as string;
+
+          // Store captured image and bounding box in sessionStorage
+          sessionStorage.setItem(`bottle_image_${sessionId}`, base64Image);
+          if (data.boundingBox) {
+            sessionStorage.setItem(`bottle_bbox_${sessionId}`, JSON.stringify(data.boundingBox));
+          }
+        };
+        reader.readAsDataURL(imageBlob);
+
         // Save bottle scan to Supabase
         const result = await saveBottleScan(
           sessionId,

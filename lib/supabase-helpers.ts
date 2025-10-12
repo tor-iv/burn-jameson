@@ -88,7 +88,7 @@ export async function saveBottleScan(
 export async function saveReceipt(
   sessionId: string,
   receiptImage: Blob,
-  venmoUsername: string
+  paypalEmail: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     // Validate image type
@@ -172,7 +172,7 @@ export async function saveReceipt(
       .insert({
         session_id: sessionId,
         image_url: publicUrl,
-        venmo_username: venmoUsername,
+        paypal_email: paypalEmail,
         status: 'pending',
         rebate_amount: 5.00
       });
