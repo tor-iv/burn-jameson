@@ -201,34 +201,59 @@ async function validateReceiptWithVision(imageBuffer: Buffer): Promise<ReceiptVa
     errors.push('Receipt text too short - please upload a complete receipt');
   }
 
-  // 4. Check for price indicators (whiskey should cost $20-$80 typically)
-  const pricePattern = /\$?\s*(\d{1,3}(?:\.\d{2})?)/g;
+  // 4. Check for price indicators - any reasonable dollar amount
+  const pricePattern = /\$\s*(\d{1,3}(?:\.\d{2})?)/g;
   const prices = [...normalizedText.matchAll(pricePattern)]
     .map(match => parseFloat(match[1]))
-    .filter(price => price >= 15 && price <= 150); // Reasonable whiskey price range
+    .filter(price => price >= 5 && price <= 500); // Very wide range to catch any receipt
 
-  if (prices.length === 0) {
-    errors.push('No valid price found on receipt');
+  // Also check for "total", "amount", "balance" near numbers
+  const hasPriceContext =
+    normalizedText.includes('total') ||
+    normalizedText.includes('amount') ||
+    normalizedText.includes('balance') ||
+    normalizedText.includes('subtotal') ||
+    prices.length > 0;
+
+  if (!hasPriceContext) {
+    errors.push('No price or total amount found on receipt');
   }
 
-  // 5. Check for date (should be recent - within last 30 days)
-  const hasDate = normalizedText.match(/\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/);
+  // 5. Check for date - support multiple formats
+  const datePatterns = [
+    /\d{1,2}[-\/\.]\d{1,2}[-\/\.]\d{2,4}/, // MM/DD/YYYY, MM-DD-YYYY, MM.DD.YYYY
+    /\d{4}[-\/\.]\d{1,2}[-\/\.]\d{1,2}/, // YYYY-MM-DD
+    /(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{1,2}[,\s]+\d{2,4}/, // Jan 15, 2025
+    /\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{2,4}/, // 15 Jan 2025
+    /(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}/, // January 15
+    /\d{1,2}[-\/]\d{1,2}(?!\d)/, // MM/DD without year
+    /(date|time)[:\s]+\d{1,2}[-\/\.]\d{1,2}/, // "Date: MM/DD"
+  ];
+
+  const hasDate = datePatterns.some(pattern => normalizedText.match(pattern));
+
   if (!hasDate) {
     errors.push('No date found on receipt');
   }
 
-  // 6. Check for merchant/store name or business indicators
-  const hasBusinessInfo =
-    normalizedText.includes('llc') ||
-    normalizedText.includes('inc') ||
-    normalizedText.includes('store') ||
-    normalizedText.includes('shop') ||
-    normalizedText.includes('bar') ||
-    normalizedText.includes('restaurant') ||
-    normalizedText.includes('liquor');
+  // 6. Check for merchant/store name or business indicators (more lenient)
+  const businessKeywords = [
+    'llc', 'inc', 'ltd', 'corp', 'company', 'co.',
+    'store', 'shop', 'market', 'mart',
+    'bar', 'pub', 'restaurant', 'cafe', 'grill',
+    'liquor', 'wine', 'spirits', 'beverage',
+    'thank you', 'thanks', 'welcome', // Common receipt phrases
+    'cashier', 'server', 'receipt #', 'order #',
+  ];
 
+  const hasBusinessInfo = businessKeywords.some(keyword =>
+    normalizedText.includes(keyword)
+  );
+
+  // Make this a warning, not a hard error
   if (!hasBusinessInfo) {
-    errors.push('Receipt must show business/merchant information');
+    console.warn('⚠️ No obvious business keywords found, but allowing receipt');
+    // Don't add to errors - too strict for real receipts
   }
 
   // Determine if receipt is valid (no critical errors)
