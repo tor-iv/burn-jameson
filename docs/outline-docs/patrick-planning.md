@@ -43,7 +43,7 @@
 - **A: Bar absorbs upfront, we reimburse monthly**  
   - Discount entered at POS, distributor deducts from Keeper’s Heart LMF.
 - **B: Mobile cashback**  
-  - Consumer uploads bar receipt; Keeper’s Heart sends rebate (Venmo/PayPal/Zelle).
+  - Consumer uploads bar receipt; Keeper’s Heart sends rebate via PayPal Payouts (with optional future alternatives if needed).
 - **C: Distributor pre-loads credits**  
   - Bar credited up front for redemptions; Keeper’s Heart funds distributor.
 
@@ -80,12 +80,12 @@ Start with 5–10 bars, measure consumer redemption, optimize, then scale.
   1. Consumer scans QR/ad OR opens microsite (digital ads, table tents, etc).
   2. AR trigger: Phone/AI recognizes “Jameson” or “Paddy’s” menu item (no QR needed).
   3. AR burn effect overlays, Keeper’s Heart offer/code appears on screen.
-  4. Consumer buys Keeper’s Heart at bar, uploads receipt, receives direct payout (Venmo/PayPal/Zelle, prepaid Visa, gift card).
+  4. Consumer buys Keeper’s Heart at bar, uploads receipt, receives direct payout (PayPal Payouts by default; Tremendous/gift card optional later).
   5. No interaction with bar/distributor for promo—just consumer and Keeper’s Heart.
 - **Tech options:**
   - WebAR (8thWall, MindAR, AR.js)
   - OCR: Tesseract.js (web), ML Kit Text Recognition (native), Tabscanner, Veryfi, Google Document AI
-  - Payment: Tremendous API, PayPal Payouts, Venmo, Prepaid Visa
+  - Payment: PayPal Payouts (primary), Tremendous API (optional), Prepaid Visa fulfillment
   - Receipt parsing: Tabscanner, Veryfi, Google Document AI
 - **Anti-abuse:**  
   Age gating, device/phone/email verification, one-per-X-days, geofence compliance, duplicate prevention.

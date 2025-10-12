@@ -91,6 +91,31 @@ export async function saveReceipt(
   venmoUsername: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Validate image type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(receiptImage.type)) {
+      return {
+        success: false,
+        error: 'Invalid image format. Please upload JPG, PNG, or WebP.'
+      };
+    }
+
+    // Validate image size (max 10MB)
+    if (receiptImage.size > 10 * 1024 * 1024) {
+      return {
+        success: false,
+        error: 'Image too large. Maximum size is 10MB.'
+      };
+    }
+
+    // Validate minimum size (100KB to ensure real photo)
+    if (receiptImage.size < 100 * 1024) {
+      return {
+        success: false,
+        error: 'Image too small. Please take a clear photo of your receipt.'
+      };
+    }
+
     // Verify bottle scan exists
     const { data: bottleScan } = await supabase
       .from('bottle_scans')

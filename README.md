@@ -1,6 +1,8 @@
 # Burn That Ad - Keeper's Heart Whiskey Campaign
 
-A mobile-first web application for an AR whiskey marketing campaign. Scan competitor (Jameson) advertisements, watch an AR "burn" effect, and receive discount codes/rewards for Keeper's Heart whiskey.
+A mobile-first web application for an AR whiskey marketing campaign. Scan competitor whiskey bottles (Jameson, Bulleit, Woodford Reserve, and 11+ more brands), watch an AR "burn" effect, and receive instant cash rebates for Keeper's Heart whiskey.
+
+**📖 READ FIRST: [OVERVIEW.md](OVERVIEW.md)** - Complete project details, competitor brands list, business model, and current status.
 
 ## 🚀 Quick Start
 
@@ -171,8 +173,20 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-production-key
 
 ## 📄 Documentation
 
-- [MVP Development Plan](MVP_PLAN.md) - 4-week implementation roadmap
-- [Requirements](REQUIREMENTS.md) - Full feature specifications
+**Main Docs:**
+- **[OVERVIEW.md](OVERVIEW.md)** ⭐ - Complete project overview, competitor brands, business model
+- **[PROGRESS.md](PROGRESS.md)** - Detailed progress tracker with task breakdown
+- **[NEXT_STEPS.md](NEXT_STEPS.md)** - Implementation roadmap and priorities
+
+**Technical Docs:**
+- [Requirements](docs/REQUIREMENTS.md) - Full feature specifications
+- [Supabase Setup](docs/SUPABASE_SETUP.md) - Database configuration guide
+- [Google Vision Setup](docs/GOOGLE_VISION_SETUP.md) - ML API setup guide
+- [Image Validation](docs/IMAGE_VALIDATION.md) - Validation implementation
+- [Deployment Guide](docs/DEPLOYMENT.md) - Production deployment steps
+- [ML Detection Analysis](docs/ML_DETECTION_ANALYSIS.md) - Computer vision options
+- [Backend Roadmap](docs/BACKEND_ROADMAP.md) - API and backend features
+- [UX Flow](docs/UX_FLOW.md) - User experience documentation
 - [Claude Instructions](CLAUDE.md) - AI development guidelines
 
 ## 🔒 Legal & Compliance

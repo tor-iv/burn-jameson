@@ -49,8 +49,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 GOOGLE_APPLICATION_CREDENTIALS=base64_encoded_service_account_json
 GOOGLE_CLOUD_PROJECT_ID=your_project_id
 
-# Venmo API (add when ready)
-VENMO_ACCESS_TOKEN=your_access_token
+# PayPal Payouts (add when ready)
+PAYPAL_CLIENT_ID=your_paypal_client_id
+PAYPAL_SECRET=your_paypal_secret
+PAYPAL_ENV=sandbox
+PAYPAL_SENDER_EMAIL=payouts@yourdomain.com
 ```
 
 ### 3. Domain Setup
@@ -107,7 +110,7 @@ npm run dev
 
 6. **Upload** → `/upload/[sessionId]`
    - Take photo or upload file
-   - Enter @venmo username
+   - Enter PayPal email address
    - Click "Submit & Get $5"
 
 7. **Confirmation** → `/confirmation/[sessionId]`
@@ -183,7 +186,7 @@ npm run lint
 - [ ] Mock bottle detection triggers after 2s
 - [ ] Burn animation plays smoothly
 - [ ] Session ID persists across routes
-- [ ] Venmo username saves to localStorage
+- [ ] PayPal email saves to localStorage
 - [ ] Receipt upload accepts images
 - [ ] Confetti animation plays on confirmation
 - [ ] Mobile responsive (test on real device)
@@ -218,12 +221,13 @@ npm run lint
 4. Add to Vercel environment variables
 5. Update `lib/supabase.ts` with credentials
 
-### Venmo API
-1. Register for Venmo Business account
-2. Apply for API access
-3. Get OAuth credentials
-4. Add to Vercel environment variables
-5. Implement in `/app/api/venmo-payout/route.ts`
+### PayPal Payouts API
+1. Upgrade to a PayPal Business account and verify identity
+2. Request access to the Payouts product (Sandbox + Live)
+3. Create REST app credentials (`PAYPAL_CLIENT_ID` / `PAYPAL_SECRET`)
+4. Store credentials in Vercel environment variables
+5. Implement payout handler in `/app/api/paypal-payout/route.ts`
+6. Configure Supabase Edge Function secrets if using serverless payouts
 
 ---
 
@@ -292,7 +296,7 @@ npm run build
 ### External Services
 - **Supabase:** Free tier (50k rows, 500 MB storage)
 - **Google Vision:** $1.50 per 1000 requests
-- **Venmo API:** Transaction fees apply
+- **PayPal Payouts:** $0.25 per standard payout (1-2 days) or 1% for instant (max $10)
 
 ---
 
@@ -302,7 +306,7 @@ npm run build
 2. ⏳ Test on mobile devices
 3. ⏳ Set up Supabase database
 4. ⏳ Integrate Google Vision API
-5. ⏳ Connect Venmo API
+5. ⏳ Connect PayPal Payouts API
 6. ⏳ Add analytics
 7. ⏳ Purchase custom domain
 8. ⏳ Launch pilot campaign!

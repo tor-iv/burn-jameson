@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **OCR:** Tesseract.js (web-based) or ML Kit Text Recognition
 - **Backend:** Node.js/Express with PostgreSQL
 - **Receipt Processing:** Tabscanner, Veryfi, or Google Document AI
-- **Payment Rails:** Tremendous API or PayPal Payouts
+- **Payment Rails:** PayPal Payouts API
 - **Analytics:** Segment or Amplitude
 
 ## Architecture
@@ -24,7 +24,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. Camera/AR recognizes "Jameson" or competitor brand on menu/ad (no QR needed for target)
 3. AR burn effect overlays on screen, Keeper's Heart offer appears
 4. Consumer purchases Keeper's Heart, uploads receipt via OCR
-5. Direct payout to consumer (Venmo/PayPal/prepaid Visa) - no bar/distributor involvement
+5. Direct payout to consumer via PayPal Payouts - no bar/distributor involvement
 
 ### Core Screens
 1. **Age Gate** - Modal overlay with 21+ verification

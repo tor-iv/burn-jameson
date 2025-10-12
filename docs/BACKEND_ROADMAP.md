@@ -1,6 +1,6 @@
 # Backend Implementation Roadmap
 
-**Goal:** Connect frontend to Supabase, integrate ML detection, and enable automated Venmo payouts
+**Goal:** Connect frontend to Supabase, integrate ML detection, and enable automated PayPal payouts
 
 ---
 
@@ -54,11 +54,11 @@ CREATE TABLE receipts (
   user_id UUID REFERENCES users(id),
   session_id TEXT NOT NULL,
   image_url TEXT NOT NULL, -- Supabase Storage URL
-  venmo_username TEXT NOT NULL,
+  paypal_email TEXT NOT NULL,
   uploaded_at TIMESTAMP DEFAULT now(),
   status TEXT DEFAULT 'pending', -- pending, approved, rejected, paid
   rebate_amount DECIMAL(5,2) DEFAULT 5.00,
-  venmo_payment_id TEXT,
+  paypal_payout_id TEXT,
   paid_at TIMESTAMP,
   admin_notes TEXT,
   CONSTRAINT fk_session FOREIGN KEY (session_id) REFERENCES bottle_scans(session_id)
@@ -248,7 +248,7 @@ const handleSubmit = async () => {
       .insert({
         session_id: sessionId,
         image_url: publicUrl,
-        venmo_username: venmoUsername,
+        paypal_email: paypalEmail,
         status: 'pending',
       });
 
@@ -437,30 +437,16 @@ const optimizedBuffer = await sharp(buffer)
 
 ---
 
-## Phase 3: Venmo API Integration (Week 2)
+## Phase 3: PayPal Payouts Integration (Week 2)
 
-### 3.1 Register for Venmo Business API
+### 3.1 Enable PayPal Payouts
 
-**Important:** Venmo doesn't have a public payout API. Options:
-
-**Option A: Manual Payouts (Recommended for MVP)**
-- Admins manually send Venmo payments
-- Build admin dashboard to approve receipts
-- Click button → Opens Venmo app with pre-filled amount
-
-**Option B: PayPal Payouts API** (Venmo is owned by PayPal)
-- Use PayPal Payouts API
-- Requires business account
-- $0.25 per payout
-- Setup: 2-3 hours
-
-**Option C: Tremendous API** (Gift cards)
-- Send digital Visa gift cards instead
-- $1 fee per payout
-- Easier to implement
-- Setup: 1 hour
-
-**Recommendation:** Start with manual payouts + admin dashboard
+- Create or upgrade to a PayPal business account and verify your business identity.
+- Request access to the Payouts product from the PayPal dashboard (usually under Developer → Payouts).
+- Create live and sandbox REST API credentials with `payouts` scope.
+- Store credentials in Supabase Edge Function secrets: `PAYPAL_CLIENT_ID`, `PAYPAL_SECRET`, and `PAYPAL_ENV`.
+- Decide on standard ($0.25) vs instant (1%) payout speed—standard is the default for MVP to keep costs low.
+- Add `PAYPAL_SENDER_EMAIL` for the branded email that appears on receipts.
 
 ### 3.2 Build Admin Dashboard
 
@@ -478,7 +464,8 @@ interface PendingReceipt {
   id: string;
   session_id: string;
   image_url: string;
-  venmo_username: string;
+  paypal_email: string;
+  paypal_payout_id: string | null;
   uploaded_at: string;
   bottle_scan: {
     bottle_image: string;
@@ -491,6 +478,7 @@ export default function AdminDashboard() {
   const [receipts, setReceipts] = useState<PendingReceipt[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isPaying, setIsPaying] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -528,27 +516,46 @@ export default function AdminDashboard() {
 
   const handleApprove = async () => {
     const receipt = receipts[currentIndex];
+    setIsPaying(true);
 
-    // Update status to approved
-    const { error } = await supabase
-      .from('receipts')
-      .update({
-        status: 'approved',
-        admin_notes: 'Manually approved'
-      })
-      .eq('id', receipt.id);
+    try {
+      const response = await fetch("/api/paypal-payout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          receiptId: receipt.id,
+          sessionId: receipt.session_id,
+          email: receipt.paypal_email,
+          amount: 5.0,
+        }),
+      });
 
-    if (error) {
-      alert('Error approving receipt');
-      return;
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Unable to send PayPal payout");
+      }
+
+      const { error: updateError } = await supabase
+        .from('receipts')
+        .update({
+          status: 'paid',
+          paypal_payout_id: result.batch_id,
+          admin_notes: 'Paid via PayPal Payouts',
+        })
+        .eq('id', receipt.id);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      setReceipts(prev => prev.filter((_, index) => index !== currentIndex));
+      setCurrentIndex(0);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Payout failed: ${message}`);
+    } finally {
+      setIsPaying(false);
     }
-
-    // Open Venmo with pre-filled payment
-    const venmoUrl = `venmo://paycharge?txn=pay&recipients=${receipt.venmo_username.replace('@', '')}&amount=5.00&note=Burn That Ad rebate`;
-    window.open(venmoUrl, '_blank');
-
-    // Move to next receipt
-    setCurrentIndex(prev => prev + 1);
   };
 
   const handleReject = async () => {
@@ -572,6 +579,7 @@ export default function AdminDashboard() {
   };
 
   const handleKeyPress = (e: KeyboardEvent) => {
+    if (isPaying) return;
     if (e.key === 'a' || e.key === 'A') handleApprove();
     if (e.key === 'r' || e.key === 'R') handleReject();
     if (e.key === 'ArrowRight') setCurrentIndex(prev => Math.min(prev + 1, receipts.length - 1));
@@ -612,7 +620,10 @@ export default function AdminDashboard() {
           <div className="mb-6 text-cream/70">
             <div>Session: {receipt.session_id}</div>
             <div>Uploaded: {new Date(receipt.uploaded_at).toLocaleString()}</div>
-            <div>Venmo: {receipt.venmo_username}</div>
+            <div>PayPal Email: {receipt.paypal_email}</div>
+            {receipt.paypal_payout_id && (
+              <div>Payout Batch: {receipt.paypal_payout_id}</div>
+            )}
           </div>
 
           {/* Images Side by Side */}
@@ -652,9 +663,10 @@ export default function AdminDashboard() {
             <Button
               onClick={handleApprove}
               size="lg"
-              className="flex-1 text-xl py-6 bg-green-600 hover:bg-green-700"
+              className="flex-1 text-xl py-6 bg-green-600 hover:bg-green-700 disabled:opacity-50"
+              disabled={isPaying}
             >
-              ✓ Approve & Pay (A)
+              {isPaying ? "Sending PayPal Payout..." : "✓ Approve & Pay (A)"}
             </Button>
             <Button
               onClick={handleReject}
@@ -697,12 +709,12 @@ npm install @paypal/payouts-sdk
 
 **Create Supabase Edge Function:**
 ```typescript
-// supabase/functions/send-venmo-payout/index.ts
+// supabase/functions/send-paypal-payout/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import * as paypal from "https://esm.sh/@paypal/payouts-sdk@1.1.1"
 
 serve(async (req) => {
-  const { venmo_username, amount, receipt_id } = await req.json()
+  const { email, amount, receipt_id, session_id } = await req.json()
 
   // Initialize PayPal client
   const environment = new paypal.core.SandboxEnvironment(
@@ -725,9 +737,12 @@ serve(async (req) => {
           value: amount.toString(),
           currency: "USD"
         },
-        receiver: venmo_username.replace('@', '') + '@venmo.com',
+        receiver: email,
         note: "Burn That Ad rebate",
-        sender_item_id: receipt_id
+        sender_item_id: receipt_id,
+        notification_language: "en-US",
+        alternate_notification_email: Deno.env.get('PAYPAL_SENDER_EMAIL') ?? undefined,
+        sender_item_description: `Session ${session_id}`
       }
     ]
   }
@@ -866,7 +881,7 @@ export async function validateSession(sessionId: string): Promise<boolean> {
 # Manual testing
 - [ ] Scan real Jameson bottle (detection works)
 - [ ] Upload receipt photo (saves to Supabase)
-- [ ] Submit with valid @venmo username
+- [ ] Submit with valid PayPal email
 - [ ] Admin can view in dashboard
 - [ ] Admin can approve/reject
 - [ ] Check Supabase Storage (images uploaded)
@@ -942,7 +957,7 @@ VACUUM ANALYZE receipts;
 
 ### Week 2: Admin + Payouts
 - **Day 1-3:** Build admin dashboard
-- **Day 4-5:** Manual Venmo payout flow
+- **Day 4-5:** Integrate PayPal Payouts API & sandbox testing
 - **Day 6-7:** Testing with real bottles/receipts
 
 ### Week 3: Security + Polish
@@ -971,14 +986,15 @@ VACUUM ANALYZE receipts;
 - Free tier: 100 GB bandwidth
 - **Cost:** $0 (within free tier)
 
-### Manual Venmo Payouts
+### PayPal Payouts (Standard)
 - $5 × 1000 users = $5,000 in rebates
-- **Cost:** $5,000 (campaign budget)
+- PayPal fees: $0.25 × 1000 = $250
+- **Total Payout Cost:** $5,250 (campaign budget)
 
 ### Total Monthly Cost
 - **Infrastructure:** ~$2
-- **Rebates:** $5,000
-- **Grand Total:** ~$5,002
+- **Rebates + Fees:** $5,250
+- **Grand Total:** ~$5,252
 
 ---
 

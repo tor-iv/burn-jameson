@@ -33,7 +33,7 @@ Build a bar/distributor-agnostic PWA microsite that uses WebAR and computer visi
    - Uploads receipt photo via app (OCR processes it)
 
 6. **Direct Payout**
-   - Consumer receives rebate via Venmo, PayPal, Zelle, prepaid Visa, or gift card
+   - Consumer receives rebate via PayPal Payouts (standard 1-2 day delivery)
    - **No bar or distributor involvement in promo redemption**
 
 ---
@@ -53,6 +53,17 @@ Build a bar/distributor-agnostic PWA microsite that uses WebAR and computer visi
   - AR.js (lightweight, open-source)
   - three.js for 3D burn effects
 
+- **Bottle Detection (implemented with validation):**
+  - **Current:** Mock detection with image validation (MVP)
+  - **Production Options:**
+    - Google Vision API - Label detection for bottle/whiskey/brand recognition
+    - Roboflow - Custom trained model on whiskey bottles (higher accuracy)
+    - Azure Computer Vision - Alternative to Google Vision
+  - **Image Validation (implemented):**
+    - File format validation (JPG, PNG, WebP)
+    - Size validation (100KB - 10MB)
+    - Quality checks to ensure real photos
+
 - **OCR Options:**
   - **Web-based:** Tesseract.js (in-browser OCR)
   - **Native:** ML Kit Text Recognition (if building native modules)
@@ -67,17 +78,23 @@ Build a bar/distributor-agnostic PWA microsite that uses WebAR and computer visi
 ### Receipt Processing
 - **Vendors:** Tabscanner, Veryfi, Google Document AI
 - **Validation Logic:**
-  - Verify "Keeper's Heart" purchase
-  - Validate date/time (within campaign window)
-  - Check location (geofencing if required)
-  - Amount verification (minimum purchase)
+  - **Image validation (implemented):**
+    - Verify file format (JPG, PNG, WebP only)
+    - Check file size (100KB - 10MB range)
+    - Validate it's an actual photo, not a blank/corrupted file
+  - **Content validation (recommended for production):**
+    - Use Google Vision API or OCR to verify image contains receipt text
+    - Check for receipt keywords (total, subtotal, tax, date)
+    - Extract and validate "Keeper's Heart" purchase
+    - Validate date/time (within campaign window)
+    - Check location (geofencing if required)
+    - Amount verification (minimum purchase)
 
 ### Payment Rails
 - **Options:**
-  - Tremendous API (prepaid Visa cards, gift cards)
-  - PayPal Payouts API
-  - Venmo (manual or API if available)
-  - Zelle (manual coordination)
+  - PayPal Payouts API (selected rail)
+  - Tremendous API (optional gift/prepaid expansion)
+  - Zelle or ACH (manual fallback if PayPal unavailable)
 
 ### Analytics & Fraud Prevention
 - **Analytics:** Segment, Amplitude, Mixpanel
@@ -169,9 +186,8 @@ Build a bar/distributor-agnostic PWA microsite that uses WebAR and computer visi
 - **Design:**
   - Success message: "Rebate Approved!"
   - Amount confirmed: "$5.00"
-  - Payment method selector (Venmo, PayPal, prepaid card)
-  - Input for payment details (email/phone)
-  - "Claim Rebate" button
+  - PayPal payout confirmation module (read-only email, edit option, delivery timeline)
+  - "Confirm Payout" button
   - Expected delivery time
 
 ---
@@ -375,7 +391,7 @@ Build a bar/distributor-agnostic PWA microsite that uses WebAR and computer visi
 ### ✅ Confirmed Decisions:
 - **Camera:** Real camera access with WebRTC/getUserMedia
 - **AR Approach:** Start with QR code trigger, but architect for future text detection
-- **Payment:** Venmo integration first (PayPal/Tremendous later)
+- **Payment:** PayPal Payouts integration first (Tremendous optional later)
 - **Age Gate:** Simple "Yes/No" with localStorage (already implemented in [age-gate.tsx](age-gate.tsx))
 - **Exit Action:** Redirect to responsibility.org (educational content)
 - **Brand Assets:** Keeper's Heart logo available in [images/logo.png](images/logo.png)

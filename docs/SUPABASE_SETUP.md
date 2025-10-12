@@ -359,8 +359,8 @@ export async function clearScans(): Promise<void> {
 const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
 
-  if (!selectedFile || !venmoUsername) {
-    alert("Please upload a receipt and enter your Venmo username");
+  if (!selectedFile || !paypalEmail) {
+    alert("Please upload a receipt and enter the PayPal email for the payout");
     return;
   }
 
@@ -389,7 +389,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       .insert({
         scan_id: scanId,
         image_url: urlData.publicUrl,
-        venmo_username: venmoUsername,
+        paypal_email: paypalEmail,
         status: "pending",
         rebate_amount: 5.0,
       });
@@ -459,7 +459,7 @@ CREATE POLICY "Authenticated users can upload receipts"
 ### Test 2: Upload a Receipt
 1. From coupon page, click "Upload Receipt"
 2. Select an image
-3. Enter Venmo username
+3. Enter PayPal email address
 4. Submit
 
 **Check Supabase:**

@@ -277,9 +277,9 @@
 │  │                   │  │
 │  └───────────────────┘  │
 │                         │
-│   Your Venmo            │
+│   Your PayPal Email     │
 │  ┌───────────────────┐  │
-│  │ @username         │  │ <- Auto-focused input
+│  │ user@email.com    │  │ <- Auto-focused input
 │  └───────────────────┘  │
 │                         │
 │  ┌───────────────────┐  │
@@ -289,14 +289,14 @@
 ```
 
 **Behavior:**
-- Load saved Venmo from localStorage if exists
+- Load saved PayPal email from localStorage if exists
 - Receipt upload:
   - Option 1: Camera capture (default)
   - Option 2: File picker (fallback)
   - Show thumbnail preview after capture
-- Venmo input:
-  - Auto-prefix with `@`
-  - Validate format: `/^@[a-zA-Z0-9_-]{1,30}$/`
+- PayPal email input:
+  - Auto-focus cursor
+  - Validate format: `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`
   - Save to localStorage on blur
 - Submit button enabled only when both fields filled
 - On submit:
@@ -307,17 +307,16 @@
 
 **Validation:**
 ```typescript
-const validateVenmo = (username: string) => {
-  if (!username.startsWith('@')) username = '@' + username
-  if (!/^@[a-zA-Z0-9_-]{1,30}$/.test(username)) {
-    return { valid: false, error: "Username should look like @yourname" }
+const validatePayPalEmail = (email: string) => {
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { valid: false, error: "Enter a valid PayPal email address" }
   }
-  return { valid: true, username }
+  return { valid: true, email }
 }
 ```
 
 **UX Optimizations:**
-- Start uploading receipt in background while user types Venmo
+- Start uploading receipt in background while user types email
 - Show file size limit: "Max 10MB"
 - Compress image before upload (reduce to 1200px width)
 
@@ -335,12 +334,12 @@ const validateVenmo = (username: string) => {
 │   being reviewed        │
 │                         │
 │   You'll receive $5     │
-│   via Venmo within      │
+│   via PayPal within     │
 │   24 hours              │
 │                         │
 │   ┌─────────────────┐   │
 │   │  $5 Pending     │   │ <- Animated shimmer
-│   │  to @username   │   │
+│   │  to user@email  │   │
 │   └─────────────────┘   │
 │                         │
 │  ┌───────────────────┐  │
@@ -353,7 +352,7 @@ const validateVenmo = (username: string) => {
 
 **Behavior:**
 - Show success animation (confetti)
-- Display user's Venmo username
+- Display user's PayPal email
 - "Done" → Navigate to `/` (or close if in standalone PWA)
 - "Scan another bottle" → Navigate to `/scan`
 - Send confirmation SMS (optional): "Thanks! Your $5 rebate is being processed."
@@ -384,7 +383,7 @@ const validateVenmo = (username: string) => {
 │ │ │  conf: 0.89 │    │             │         │ │
 │ │ └─────────────┘    └─────────────┘         │ │
 │ │                                             │ │
-│ │ Venmo: @johndoe                             │ │
+│ │ PayPal: user@email.com                      │ │
 │ │ Amount: $5.00                               │ │
 │ │                                             │ │
 │ │ [✓ Approve & Pay]  [✗ Reject]              │ │
@@ -400,14 +399,14 @@ const validateVenmo = (username: string) => {
 - Require admin authentication (Supabase Auth)
 - Show pending receipts first (newest first)
 - Side-by-side image comparison (bottle vs receipt)
-- Display session metadata: timestamp, confidence score, Venmo username
+- Display session metadata: timestamp, confidence score, PayPal email
 - Approve flow:
   1. Click "Approve & Pay"
-  2. Show loading: "Sending Venmo payment..."
-  3. Call Supabase Edge Function → Venmo API
+  2. Show loading: "Sending PayPal payout..."
+  3. Call Supabase Edge Function → PayPal Payouts API
   4. Update `receipts.status = 'paid'` and `paid_at = now()`
-  5. Store `venmo_payment_id`
-  6. Show success: "Paid $5 to @johndoe"
+  5. Store `paypal_payout_id`
+  6. Show success: "Paid $5 via PayPal"
   7. Move to next pending receipt
 - Reject flow:
   1. Click "Reject"
@@ -422,7 +421,7 @@ const validateVenmo = (username: string) => {
 
 **Fraud Detection Flags:**
 - Same receipt image uploaded multiple times (image hash)
-- Same Venmo username > 3 times in 30 days
+- Same PayPal email > 3 times in 30 days
 - Session_id mismatch (bottle + receipt from different sessions)
 - Confidence score < 70% (flag for review)
 
@@ -475,10 +474,10 @@ Having trouble?
 └─────────────────────────┘
 ```
 
-### Venmo Payment Failed
+### PayPal Payout Failed
 **Admin sees:**
 ```
-❌ Payment failed: Invalid Venmo username
+❌ Payment failed: Invalid PayPal email
 [Retry] [Reject]
 ```
 
@@ -499,7 +498,7 @@ router.prefetch(`/success/${sessionId}`)
 
 // During receipt upload, start uploading immediately
 const uploadPromise = uploadReceipt(file) // Don't await
-// User fills Venmo while upload happens
+// User enters PayPal email while upload happens
 await uploadPromise // Wait before submit
 ```
 
@@ -532,7 +531,7 @@ if (!navigator.onLine) {
   localStorage.setItem('pending_upload', JSON.stringify({
     sessionId,
     receipt: base64Image,
-    venmo
+    paypalEmail
   }))
   // Show: "You're offline. We'll upload when connected."
 }
@@ -594,7 +593,7 @@ navigator.vibrate([100, 50, 100, 50, 200])
 analytics.track('Age Verified')
 analytics.track('Bottle Detected', { brand, confidence })
 analytics.track('Receipt Uploaded', { sessionId })
-analytics.track('Payment Sent', { amount: 5, venmo })
+analytics.track('Payment Sent', { amount: 5, paypalEmail })
 
 // Track drop-off points
 analytics.track('Camera Permission Denied')
