@@ -35,6 +35,9 @@ The app detects and validates the following competitor whiskey brands:
 - **Writers' Tears**
 - **Teeling**
 
+### Scotch Whisky
+- **Johnnie Walker**
+
 ### American Whiskey (Bourbon/Rye)
 - **Bulleit**
 - **Woodford Reserve**
@@ -45,12 +48,12 @@ The app detects and validates the following competitor whiskey brands:
 - **Knob Creek**
 - **Four Roses**
 
-**Total:** 14 competitor brands tracked
+**Total:** 15 competitor brands tracked
 
 ### Detection Logic
 - **Current (MVP):** Mock detection accepts any bottle
 - **Production:** Google Vision API identifies brand from label
-- **Future:** Custom Roboflow model trained on these 14 brands (highest accuracy)
+- **Future:** Custom Roboflow model trained on these 15 brands (highest accuracy)
 
 ---
 

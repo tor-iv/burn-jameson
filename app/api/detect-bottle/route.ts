@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Competitor brands we're targeting (14 total)
+// Competitor brands we're targeting (16 total)
 const COMPETITOR_BRANDS = {
   // Irish Whiskey
   'jameson': 'Jameson Irish Whiskey',
@@ -9,6 +9,10 @@ const COMPETITOR_BRANDS = {
   'redbreast': 'Redbreast',
   'writers': 'Writers\' Tears',
   'teeling': 'Teeling',
+
+  // Scotch Whisky
+  'johnnie walker': 'Johnnie Walker',
+  'johnnie': 'Johnnie Walker',
 
   // American Whiskey (Bourbon/Rye)
   'bulleit': 'Bulleit',
@@ -214,7 +218,7 @@ const client = new vision.ImageAnnotatorClient({
   keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
 });
 
-// Competitor brands we're targeting (14 total)
+// Competitor brands we're targeting (16 total)
 const COMPETITOR_BRANDS = {
   // Irish Whiskey
   'jameson': 'Jameson Irish Whiskey',
@@ -223,6 +227,10 @@ const COMPETITOR_BRANDS = {
   'redbreast': 'Redbreast',
   'writers': 'Writers\' Tears',
   'teeling': 'Teeling',
+
+  // Scotch Whisky
+  'johnnie walker': 'Johnnie Walker',
+  'johnnie': 'Johnnie Walker',
 
   // American Whiskey (Bourbon/Rye)
   'bulleit': 'Bulleit',
