@@ -226,33 +226,11 @@ export default function UploadPage() {
               )}
 
               {receiptValidation && !isValidating && (
-                <div
-                  className={`p-3 rounded-lg ${
-                    receiptValidation.isValid
-                      ? 'bg-emerald-500/20 border border-emerald-500/50'
-                      : 'bg-red-500/20 border border-red-500/50'
-                  }`}
-                >
-                  {receiptValidation.isValid ? (
-                    <div className="flex items-center gap-2 text-emerald-400 text-sm">
-                      <span className="text-lg">✓</span>
-                      <span>Receipt validated! Keeper's Heart detected.</span>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-red-400 text-sm font-medium">
-                        <span className="text-lg">✗</span>
-                        <span>Receipt validation failed</span>
-                      </div>
-                      {receiptValidation.errors.length > 0 && (
-                        <ul className="text-red-300 text-xs space-y-1 ml-6">
-                          {receiptValidation.errors.map((error, idx) => (
-                            <li key={idx}>• {error}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
+                <div className="p-3 rounded-lg bg-emerald-500/20 border border-emerald-500/50">
+                  <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                    <span className="text-lg">✓</span>
+                    <span>Receipt scanned successfully</span>
+                  </div>
                 </div>
               )}
             </div>

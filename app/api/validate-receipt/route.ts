@@ -94,26 +94,29 @@ async function validateReceiptWithVision(imageBuffer: Buffer): Promise<ReceiptVa
     1.0
   );
 
-  // Validation errors
-  const errors: string[] = [];
-  if (!hasKeepersHeart) {
-    errors.push("Receipt must show purchase of Keeper's Heart whiskey");
-  }
-  if (!hasReceiptKeywords) {
-    errors.push("Image doesn't appear to be a valid receipt");
-  }
-  if (textLength < 20) {
-    errors.push("Receipt text is too short or unclear");
-  }
+  // Log everything for testing
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('📄 RECEIPT VALIDATION LOG');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('✅ Has Keeper\'s Heart:', hasKeepersHeart);
+  console.log('✅ Has Receipt Keywords:', hasReceiptKeywords);
+  console.log('📊 Confidence Score:', confidence.toFixed(2));
+  console.log('📝 Text Length:', textLength, 'characters');
+  console.log('🔍 Matched Keywords:', matchedKeywords.join(', ') || 'none');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('📄 FULL DETECTED TEXT:');
+  console.log(fullText || '(no text detected)');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
+  // Accept all receipts - just log for testing
   return {
-    isValid: hasKeepersHeart && hasReceiptKeywords && textLength >= 20,
+    isValid: true,
     hasKeepersHeart,
     hasReceiptKeywords,
     confidence,
     detectedText: fullText,
     matchedKeywords,
-    errors,
+    errors: [],
   };
 }
 
