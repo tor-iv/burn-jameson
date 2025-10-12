@@ -1,5 +1,150 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Competitor brands we're targeting (14 total)
+const COMPETITOR_BRANDS = {
+  // Irish Whiskey
+  'jameson': 'Jameson Irish Whiskey',
+  'tullamore': 'Tullamore Dew',
+  'bushmills': 'Bushmills',
+  'redbreast': 'Redbreast',
+  'writers': 'Writers\' Tears',
+  'teeling': 'Teeling',
+
+  // American Whiskey (Bourbon/Rye)
+  'bulleit': 'Bulleit',
+  'woodford': 'Woodford Reserve',
+  'maker': 'Maker\'s Mark',
+  'angel': 'Angel\'s Envy',
+  'high west': 'High West',
+  'michter': 'Michter\'s',
+  'knob creek': 'Knob Creek',
+  'four roses': 'Four Roses'
+};
+
+async function detectBottleWithVision(imageBuffer: Buffer) {
+  const apiKey = process.env.GOOGLE_VISION_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('GOOGLE_VISION_API_KEY not configured');
+  }
+
+  // Convert image buffer to base64
+  const base64Image = imageBuffer.toString('base64');
+
+  // Call Google Vision API REST endpoint
+  const response = await fetch(
+    `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        requests: [
+          {
+            image: {
+              content: base64Image,
+            },
+            features: [
+              { type: 'LABEL_DETECTION', maxResults: 50 },
+              { type: 'TEXT_DETECTION', maxResults: 50 },
+              { type: 'LOGO_DETECTION', maxResults: 10 },
+            ],
+          },
+        ],
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(`Vision API error: ${JSON.stringify(error)}`);
+  }
+
+  const data = await response.json();
+  const result = data.responses[0];
+
+  // Combine all text detections
+  const detectedTexts = result.textAnnotations?.map((t: any) =>
+    t.description?.toLowerCase() || ''
+  ) || [];
+
+  // Get labels
+  const labels = result.labelAnnotations?.map((l: any) => ({
+    description: l.description,
+    score: l.score
+  })) || [];
+
+  // Get logos
+  const logos = result.logoAnnotations?.map((l: any) => ({
+    description: l.description,
+    score: l.score
+  })) || [];
+
+  // Check for competitor brands in text, labels, and logos
+  let detectedBrand = null;
+  let brandConfidence = 0;
+
+  // First check logos (most reliable)
+  for (const logo of logos) {
+    const desc = logo.description?.toLowerCase() || '';
+    for (const [keyword, brandName] of Object.entries(COMPETITOR_BRANDS)) {
+      if (desc.includes(keyword)) {
+        detectedBrand = brandName;
+        brandConfidence = logo.score;
+        break;
+      }
+    }
+    if (detectedBrand) break;
+  }
+
+  // Then check text detections
+  if (!detectedBrand) {
+    const fullText = detectedTexts.join(' ');
+    for (const [keyword, brandName] of Object.entries(COMPETITOR_BRANDS)) {
+      if (fullText.includes(keyword)) {
+        detectedBrand = brandName;
+        brandConfidence = 0.75; // Good confidence for text match
+        break;
+      }
+    }
+  }
+
+  // Finally check labels
+  if (!detectedBrand) {
+    for (const label of labels) {
+      const desc = label.description?.toLowerCase() || '';
+      for (const [keyword, brandName] of Object.entries(COMPETITOR_BRANDS)) {
+        if (desc.includes(keyword)) {
+          detectedBrand = brandName;
+          brandConfidence = label.score;
+          break;
+        }
+      }
+      if (detectedBrand) break;
+    }
+  }
+
+  // Check for generic whiskey bottle indicators
+  const hasBottle = labels.some((l: { description: string; score: number }) =>
+    l.description?.toLowerCase().includes('bottle')
+  );
+  const hasWhiskey = labels.some((l: { description: string; score: number }) => {
+    const desc = l.description?.toLowerCase() || '';
+    return desc.includes('whiskey') || desc.includes('whisky') || desc.includes('bourbon');
+  });
+
+  return {
+    detected: !!detectedBrand,
+    brand: detectedBrand || 'Unknown',
+    confidence: brandConfidence,
+    hasBottle,
+    hasWhiskey,
+    labels: labels.map((l: { description: string; score: number }) => l.description).filter(Boolean),
+    detectedText: detectedTexts[0] || '', // Full text from image
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Get the image blob from the request
@@ -38,26 +183,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // TODO: Integrate with Google Vision API or Roboflow
-    // For now, return mock response for MVP testing
+    // Convert blob to buffer for Vision API
+    const arrayBuffer = await image.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Call Google Vision API
+    const detectionResult = await detectBottleWithVision(buffer);
 
-    // Mock response - in production, call actual ML API
-    const mockResponse = {
-      detected: true,
-      brand: 'Jameson Irish Whiskey',
-      confidence: 0.87,
-      labels: ['whiskey', 'bottle', 'Jameson', 'alcohol'],
+    return NextResponse.json({
+      ...detectionResult,
       validated: true, // Image validation passed
-    };
-
-    return NextResponse.json(mockResponse);
+    });
   } catch (error) {
     console.error('Bottle detection error:', error);
     return NextResponse.json(
-      { error: 'Detection failed' },
+      {
+        error: 'Detection failed',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
