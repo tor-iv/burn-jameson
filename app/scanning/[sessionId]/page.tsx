@@ -4,6 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import dynamic from "next/dynamic";
+
+const ThreeBurnAnimation = dynamic(() => import("@/components/ThreeBurnAnimation"), {
+  ssr: false,
+});
 
 interface BoundingBox {
   vertices?: Array<{ x: number; y: number }>;
@@ -20,10 +25,10 @@ const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
 const FALLBACK_BOX: NormalizedBox = {
-  x: 0.2,
-  y: 0.08,
-  width: 0.6,
-  height: 0.78,
+  x: 0.3,
+  y: 0.15,
+  width: 0.4,
+  height: 0.7,
 };
 
 function normalizeFromRaw(
@@ -52,21 +57,27 @@ function normalizeFromRaw(
 
 function expandBoundingBox(
   box: NormalizedBox | null,
-  widthMultiplier = 1.8,
-  heightMultiplier = 1.6
+  widthMultiplier = 1.05,
+  heightMultiplier = 1.05
 ): NormalizedBox | null {
   if (!box) return null;
 
+  // Very minimal expansion - just 5% to cover edges
   const centerX = box.x + box.width / 2;
   const centerY = box.y + box.height / 2;
 
-  const width = clamp(box.width * widthMultiplier, 0.32, 0.92);
-  const height = clamp(box.height * heightMultiplier, 0.6, 0.96);
+  const width = box.width * widthMultiplier;
+  const height = box.height * heightMultiplier;
 
-  const x = clamp(centerX - width / 2, 0.02, 1 - width - 0.02);
-  const y = clamp(centerY - height / 2, 0.04, 1 - height - 0.04);
+  const x = centerX - width / 2;
+  const y = centerY - height / 2;
 
-  return { x, y, width, height };
+  return {
+    x: Math.max(0, Math.min(x, 1 - width)),
+    y: Math.max(0, Math.min(y, 1 - height)),
+    width: Math.min(width, 1),
+    height: Math.min(height, 1),
+  };
 }
 
 export default function ScanningPage() {
@@ -79,7 +90,15 @@ export default function ScanningPage() {
   const [normalizedBox, setNormalizedBox] = useState<NormalizedBox | null>(null);
   const [expandedBox, setExpandedBox] = useState<NormalizedBox | null>(null);
   const [particles, setParticles] = useState<
-    Array<{ startX: number; startY: number; driftX: number }>
+    Array<{
+      startX: number;
+      startY: number;
+      driftX: number;
+      size: number;
+      color: string;
+      velocity: number;
+      rotation: number;
+    }>
   >([]);
   const [showContinue, setShowContinue] = useState(false);
 
@@ -137,12 +156,13 @@ export default function ScanningPage() {
 
   useEffect(() => {
     const buttonTimer = setTimeout(() => setShowContinue(true), 3500);
+
     const autoTimer = setTimeout(() => {
       if (!hasNavigated.current) {
         hasNavigated.current = true;
         router.push(`/success/${sessionId}`);
       }
-    }, 12000); // Extended from 7.5s to 12s
+    }, 5000); // Auto-advance after 5 seconds total
 
     return () => {
       clearTimeout(buttonTimer);
@@ -161,13 +181,21 @@ export default function ScanningPage() {
     const viewportHeight = window.innerHeight;
     const box = activeBox;
 
-    const nextParticles = Array.from({ length: 22 }).map(() => ({
-      startX:
-        (box.x + Math.random() * box.width) *
-        viewportWidth,
-      startY: (box.y + box.height * 0.9) * viewportHeight,
-      driftX: (Math.random() - 0.5) * viewportWidth * 0.12,
-    }));
+    const nextParticles = Array.from({ length: 35 }).map(() => {
+      const hue = 30 + Math.random() * 30; // Orange to red range
+      const lightness = 50 + Math.random() * 30;
+      const saturation = 90 + Math.random() * 10;
+
+      return {
+        startX: (box.x + Math.random() * box.width) * viewportWidth,
+        startY: (box.y + box.height * 0.9) * viewportHeight,
+        driftX: (Math.random() - 0.5) * viewportWidth * 0.15,
+        size: 2 + Math.random() * 6,
+        color: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
+        velocity: 200 + Math.random() * 150,
+        rotation: Math.random() * 360,
+      };
+    });
 
     setParticles(nextParticles);
   }, [activeBox]);
@@ -198,7 +226,19 @@ export default function ScanningPage() {
   };
 
   return (
-    <div className="relative min-h-screen bg-black flex items-center justify-center overflow-hidden">
+    <motion.div
+      className="relative min-h-screen bg-black flex items-center justify-center overflow-hidden"
+      initial={{ x: 0, y: 0 }}
+      animate={{
+        x: [0, -3, 3, -2, 2, -1, 1, 0],
+        y: [0, 2, -2, 2, -1, 1, -1, 0],
+      }}
+      transition={{
+        duration: 0.5,
+        times: [0, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1],
+        ease: "easeInOut",
+      }}
+    >
       {bottleImage ? (
         <img
           src={bottleImage}
@@ -209,6 +249,11 @@ export default function ScanningPage() {
         <div className="relative z-10">
           <div className="w-64 h-96 bg-gradient-to-b from-amber-900 via-amber-700 to-amber-500 rounded-lg opacity-80" />
         </div>
+      )}
+
+      {/* Three.js Burn Animation */}
+      {bottleImage && (
+        <ThreeBurnAnimation boundingBox={activeBox} imageUrl={bottleImage} />
       )}
 
       {process.env.NODE_ENV !== "production" && rawBoundingBox && (
@@ -223,72 +268,43 @@ export default function ScanningPage() {
       )}
 
       <motion.div
-        initial={{ opacity: 0, scale: 1.05 }}
-        animate={{
-          opacity: [0, 0.85, 0.95, 0],
-          scale: [1.05, 1, 1, 0.92],
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -15 }}
+        transition={{
+          delay: 1.2,
+          type: "spring",
+          stiffness: 150,
+          damping: 20,
         }}
-        transition={{ duration: 4, times: [0, 0.18, 0.85, 1], ease: "easeInOut" }}
-        className="absolute pointer-events-none z-30 rounded-full"
-        style={{
-          ...fireBox,
-          background:
-            "radial-gradient(circle at 50% 80%, rgba(255,255,255,0.45), rgba(255,106,0,0.75) 40%, rgba(255,20,0,0.6) 70%, rgba(0,0,0,0) 100%)",
-          mixBlendMode: "screen",
-          filter: "blur(38px)",
-        }}
-      />
-
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: [0, 0.7, 0.4, 0] }}
-        transition={{ duration: 4, times: [0, 0.3, 0.8, 1] }}
-        className="absolute z-20"
-        style={{
-          ...fireBox,
-          background:
-            "radial-gradient(circle at 50% 90%, rgba(255,215,0,0.45), rgba(255,69,0,0.3) 65%, transparent 100%)",
-          mixBlendMode: "screen",
-          filter: "blur(60px)",
-        }}
-      />
-
-      {particles.map((particle, index) => (
-        <motion.div
-          key={`particle-${index}`}
-          initial={{
-            opacity: 0,
-            x: particle.startX,
-            y: particle.startY,
-            scale: Math.random() * 0.6 + 0.4,
-          }}
-          animate={{
-            opacity: [0, 1, 0],
-            y: particle.startY - 320 - Math.random() * 120,
-            x: particle.startX + particle.driftX,
-            scale: [0.4, 1, 0],
-          }}
-          transition={{
-            duration: 3.4 + Math.random() * 0.6,
-            delay: Math.random() * 0.4,
-            ease: "easeOut",
-          }}
-          className="absolute w-2 h-2 rounded-full bg-orange-400"
-        />
-      ))}
-
-      <motion.div
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: [0, 1, 1, 0], y: [18, 0, 0, -12] }}
-        transition={{ duration: 4, times: [0, 0.2, 0.85, 1] }}
         className="absolute bottom-36 left-0 right-0 text-center z-40"
       >
-        <p className="text-white text-2xl font-bold drop-shadow-lg">
+        <motion.p
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{
+            delay: 1.5,
+            type: "spring",
+            stiffness: 300,
+            damping: 15,
+          }}
+          className="text-white text-2xl font-bold drop-shadow-lg"
+        >
           Keeper&apos;s Heart is taking over...
-        </p>
-        <p className="text-white/70 text-base mt-2">
+        </motion.p>
+        <motion.p
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{
+            delay: 2,
+            type: "spring",
+            stiffness: 200,
+            damping: 20,
+          }}
+          className="text-white/70 text-base mt-2"
+        >
           Watch the burn, then continue to claim your rebate.
-        </p>
+        </motion.p>
       </motion.div>
 
       {showContinue && (
@@ -302,6 +318,6 @@ export default function ScanningPage() {
           </Button>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

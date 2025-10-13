@@ -76,23 +76,23 @@ function normalizeBoundingPoly(
   };
 }
 
-function expandNormalizedBox(box: NormalizedBoundingBox | null, expandX = 1.6, expandY = 1.8) {
+function expandNormalizedBox(box: NormalizedBoundingBox | null, expandX = 1.05, expandY = 1.05) {
   if (!box) return null;
 
+  // Very minimal expansion - just 5% to cover edges
   const centerX = box.x + box.width / 2;
   const centerY = box.y + box.height / 2;
-  const width = Math.min(0.95, box.width * expandX);
-  const height = Math.min(0.95, box.height * expandY);
-  const clampedWidth = Math.max(width, 0.35);
-  const clampedHeight = Math.max(height, 0.55);
-  const x = Math.min(Math.max(centerX - clampedWidth / 2, 0.025), 1 - clampedWidth - 0.025);
-  const y = Math.min(Math.max(centerY - clampedHeight / 2, 0.05), 1 - clampedHeight - 0.05);
+  const width = box.width * expandX;
+  const height = box.height * expandY;
+  const x = centerX - width / 2;
+  const y = centerY - height / 2;
 
+  // Clamp to screen bounds
   return {
-    x,
-    y,
-    width: clampedWidth,
-    height: clampedHeight,
+    x: Math.max(0, Math.min(x, 1 - width)),
+    y: Math.max(0, Math.min(y, 1 - height)),
+    width: Math.min(width, 1),
+    height: Math.min(height, 1),
   };
 }
 
@@ -187,6 +187,7 @@ async function detectBottleWithVision(
         detectedBrand = brandName;
         brandConfidence = logo.score;
         boundingBox = logo.boundingPoly;
+        console.log(`Found ${brandName} via logo detection`);
         break;
       }
     }
@@ -206,8 +207,7 @@ async function detectBottleWithVision(
       if (matchingAnnotation) {
         detectedBrand = brandName;
         brandConfidence = 0.85; // High confidence for text match
-        // Use the specific text annotation's bounding box
-        boundingBox = matchingAnnotation.boundingPoly;
+        // IMPORTANT: Don't use text bounding box - use bottle object instead
         console.log(`Found ${brandName} in text annotation:`, matchingAnnotation.description);
         break;
       }
@@ -222,11 +222,7 @@ async function detectBottleWithVision(
         if (desc.includes(keyword)) {
           detectedBrand = brandName;
           brandConfidence = label.score;
-          // No bounding box from labels, but use bottle object if available
-          if (bottleObject) {
-            boundingBox = bottleObject.boundingPoly;
-            console.log('Using bottle object bounding box as fallback');
-          }
+          console.log(`Found ${brandName} via label detection`);
           break;
         }
       }
@@ -234,10 +230,12 @@ async function detectBottleWithVision(
     }
   }
 
-  // If we found a brand but no bounding box, try to use bottle object localization
-  if (detectedBrand && !boundingBox && bottleObject) {
+  // ALWAYS prefer bottle object localization for bounding box (most accurate)
+  if (detectedBrand && bottleObject) {
     boundingBox = bottleObject.boundingPoly;
-    console.log('Applied bottle object bounding box to detected brand:', detectedBrand);
+    console.log('Using bottle object bounding box for positioning (most accurate)');
+  } else if (detectedBrand && !boundingBox) {
+    console.log('WARNING: Brand detected but no bottle object found - using fallback');
   }
 
   // Check for generic whiskey bottle indicators
