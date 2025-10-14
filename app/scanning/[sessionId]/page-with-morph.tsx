@@ -6,6 +6,11 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import dynamic from "next/dynamic";
 
+// Import the bottle morph animation
+const BottleMorphAnimation = dynamic(() => import("@/components/BottleMorphAnimation"), {
+  ssr: false,
+});
+
 const GifBurnAnimation = dynamic(() => import("@/components/GifBurnAnimation"), {
   ssr: false,
 });
@@ -62,7 +67,6 @@ function expandBoundingBox(
 ): NormalizedBox | null {
   if (!box) return null;
 
-  // Minimal 5% expansion for tight fit
   const centerX = box.x + box.width / 2;
   const centerY = box.y + box.height / 2;
 
@@ -89,18 +93,11 @@ export default function ScanningPage() {
   const [rawBoundingBox, setRawBoundingBox] = useState<BoundingBox | null>(null);
   const [normalizedBox, setNormalizedBox] = useState<NormalizedBox | null>(null);
   const [expandedBox, setExpandedBox] = useState<NormalizedBox | null>(null);
-  const [particles, setParticles] = useState<
-    Array<{
-      startX: number;
-      startY: number;
-      driftX: number;
-      size: number;
-      color: string;
-      velocity: number;
-      rotation: number;
-    }>
-  >([]);
   const [showContinue, setShowContinue] = useState(false);
+
+  // NEW: State to control which animation to show
+  const [animationPhase, setAnimationPhase] = useState<'burn' | 'morph' | 'complete'>('burn');
+  const [useMorphAnimation, setUseMorphAnimation] = useState(false); // Toggle for morph feature
 
   const hasNavigated = useRef(false);
 
@@ -113,6 +110,10 @@ export default function ScanningPage() {
     const expanded = sessionStorage.getItem(
       `bottle_bbox_expanded_${sessionId}`
     );
+
+    // Check if morph animation should be enabled (you can set this via query param or session storage)
+    const morphEnabled = sessionStorage.getItem('morph_enabled') === 'true';
+    setUseMorphAnimation(morphEnabled);
 
     if (image) {
       setBottleImage(image);
@@ -155,71 +156,61 @@ export default function ScanningPage() {
   }, [router, sessionId]);
 
   useEffect(() => {
-    const buttonTimer = setTimeout(() => setShowContinue(true), 3500);
+    if (useMorphAnimation) {
+      // Two-phase animation: burn then morph
+      const burnTimer = setTimeout(() => {
+        setAnimationPhase('morph');
+      }, 2000); // Burn for 2 seconds
 
-    const autoTimer = setTimeout(() => {
-      if (!hasNavigated.current) {
-        hasNavigated.current = true;
-        router.push(`/success/${sessionId}`);
-      }
-    }, 5000); // Auto-advance after 5 seconds total
+      const morphTimer = setTimeout(() => {
+        setAnimationPhase('complete');
+        setShowContinue(true);
+      }, 7000); // Morph starts at 2s, takes ~5s (generation + playback)
 
-    return () => {
-      clearTimeout(buttonTimer);
-      clearTimeout(autoTimer);
-    };
-  }, [router, sessionId]);
+      const autoTimer = setTimeout(() => {
+        if (!hasNavigated.current) {
+          hasNavigated.current = true;
+          router.push(`/success/${sessionId}`);
+        }
+      }, 10000); // Auto-advance after 10 seconds total
+
+      return () => {
+        clearTimeout(burnTimer);
+        clearTimeout(morphTimer);
+        clearTimeout(autoTimer);
+      };
+    } else {
+      // Original timing: just burn animation
+      const buttonTimer = setTimeout(() => setShowContinue(true), 3500);
+
+      const autoTimer = setTimeout(() => {
+        if (!hasNavigated.current) {
+          hasNavigated.current = true;
+          router.push(`/success/${sessionId}`);
+        }
+      }, 5000);
+
+      return () => {
+        clearTimeout(buttonTimer);
+        clearTimeout(autoTimer);
+      };
+    }
+  }, [router, sessionId, useMorphAnimation]);
 
   const activeBox = useMemo<NormalizedBox>(() => {
     return expandedBox ?? normalizedBox ?? FALLBACK_BOX;
   }, [expandedBox, normalizedBox]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const box = activeBox;
-
-    const nextParticles = Array.from({ length: 35 }).map(() => {
-      const hue = 30 + Math.random() * 30; // Orange to red range
-      const lightness = 50 + Math.random() * 30;
-      const saturation = 90 + Math.random() * 10;
-
-      return {
-        startX: (box.x + Math.random() * box.width) * viewportWidth,
-        startY: (box.y + box.height * 0.9) * viewportHeight,
-        driftX: (Math.random() - 0.5) * viewportWidth * 0.15,
-        size: 2 + Math.random() * 6,
-        color: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
-        velocity: 200 + Math.random() * 150,
-        rotation: Math.random() * 360,
-      };
-    });
-
-    setParticles(nextParticles);
-  }, [activeBox]);
-
-  const fireBox = useMemo(() => {
-    // Remove size limits - let the animation cover the entire detected bottle
-    const widthPercent = activeBox.width * 100;
-    const heightPercent = activeBox.height * 100;
-    const centerXPercent = (activeBox.x + activeBox.width / 2) * 100;
-    const topPercent = activeBox.y * 100;
-
-    return {
-      top: `${topPercent}%`,
-      left: `${centerXPercent}%`,
-      width: `${widthPercent}%`,
-      height: `${heightPercent}%`,
-      transform: "translate(-50%, 0)",
-    };
-  }, [activeBox]);
-
   const handleContinue = () => {
     if (hasNavigated.current) return;
     hasNavigated.current = true;
     router.push(`/success/${sessionId}`);
+  };
+
+  const handleMorphComplete = () => {
+    console.log('Bottle morph animation complete');
+    setAnimationPhase('complete');
+    setShowContinue(true);
   };
 
   return (
@@ -236,27 +227,49 @@ export default function ScanningPage() {
         ease: "easeInOut",
       }}
     >
-      {bottleImage ? (
+      {/* Background bottle image (for burn animation) or hidden during morph */}
+      {bottleImage && animationPhase === 'burn' && (
         <img
           src={bottleImage}
           alt="Captured bottle"
           className="absolute inset-0 w-full h-full object-cover"
         />
-      ) : (
-        <div className="relative z-10">
-          <div className="w-64 h-96 bg-gradient-to-b from-amber-900 via-amber-700 to-amber-500 rounded-lg opacity-80" />
-        </div>
       )}
 
-      {/* GIF Burn Animation */}
-      {bottleImage && (
+      {/* Burn Animation (Phase 1) */}
+      {bottleImage && animationPhase === 'burn' && !useMorphAnimation && (
         <GifBurnAnimation boundingBox={activeBox} imageUrl={bottleImage} />
       )}
 
+      {/* Burn Animation (Phase 1) - For morph-enabled flow */}
+      {bottleImage && animationPhase === 'burn' && useMorphAnimation && (
+        <GifBurnAnimation boundingBox={activeBox} imageUrl={bottleImage} />
+      )}
+
+      {/* Morph Animation (Phase 2) - NEW */}
+      {bottleImage && animationPhase === 'morph' && useMorphAnimation && (
+        <div className="absolute inset-0 w-full h-full">
+          <BottleMorphAnimation
+            capturedImage={bottleImage}
+            boundingBox={activeBox}
+            onComplete={handleMorphComplete}
+            useThreeFrameMode={true} // Set to false for 8-frame mode ($0.31)
+            duration={3000} // 3 second playback
+          />
+        </div>
+      )}
+
+      {/* Debug bounding box */}
       {process.env.NODE_ENV !== "production" && rawBoundingBox && (
         <div
           className="absolute pointer-events-none border-2 border-green-500/70 z-40"
-          style={fireBox}
+          style={{
+            top: `${activeBox.y * 100}%`,
+            left: `${(activeBox.x + activeBox.width / 2) * 100}%`,
+            width: `${activeBox.width * 100}%`,
+            height: `${activeBox.height * 100}%`,
+            transform: "translate(-50%, 0)",
+          }}
         >
           <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 text-xs">
             DEBUG: Bounding Box
@@ -264,6 +277,7 @@ export default function ScanningPage() {
         </div>
       )}
 
+      {/* Continue button */}
       {showContinue && (
         <div className="absolute bottom-16 left-0 right-0 flex justify-center z-50 px-6">
           <Button
@@ -273,6 +287,22 @@ export default function ScanningPage() {
           >
             Continue
           </Button>
+        </div>
+      )}
+
+      {/* Development toggle for morph feature */}
+      {process.env.NODE_ENV !== "production" && (
+        <div className="absolute top-4 right-4 z-50">
+          <button
+            onClick={() => {
+              const newValue = !useMorphAnimation;
+              setUseMorphAnimation(newValue);
+              sessionStorage.setItem('morph_enabled', newValue.toString());
+            }}
+            className="bg-purple-600 text-white px-4 py-2 rounded text-sm"
+          >
+            Morph: {useMorphAnimation ? 'ON' : 'OFF'}
+          </button>
         </div>
       )}
     </motion.div>
