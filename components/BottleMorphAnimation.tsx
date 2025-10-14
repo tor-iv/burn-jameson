@@ -35,7 +35,7 @@ export default function BottleMorphAnimation({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [cost, setCost] = useState(0);
-  const animationFrameRef = useRef<number>();
+  const animationFrameRef = useRef<number | undefined>(undefined);
 
   // Generate morph frames
   useEffect(() => {
@@ -51,10 +51,15 @@ export default function BottleMorphAnimation({
           ? [0, 50, 100] // 3-frame mode: $0.12 per conversion
           : [0, 15, 30, 45, 60, 75, 90, 100]; // 8-frame mode: $0.31 per conversion
 
-        console.log(`Generating ${framePercentages.length} morph frames...`);
+        console.log(`[MORPH COMPONENT] 🎬 Starting generation of ${framePercentages.length} morph frames...`);
+        console.log(`[MORPH COMPONENT] Mode: ${useThreeFrameMode ? '3-frame ($0.12)' : '8-frame ($0.31)'}`);
+        console.log(`[MORPH COMPONENT] Image length: ${capturedImage?.length || 0} chars`);
+        console.log(`[MORPH COMPONENT] Bounding box:`, boundingBox);
 
         // Generate all frames in parallel for speed
         const framePromises = framePercentages.map(async (percent) => {
+          console.log(`[MORPH COMPONENT] 📤 Requesting ${percent}% frame...`);
+
           const response = await fetch('/api/morph-bottle', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -67,11 +72,14 @@ export default function BottleMorphAnimation({
           });
 
           if (!response.ok) {
-            const errorData = await response.json();
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            console.error(`[MORPH COMPONENT] ❌ Failed to generate ${percent}% frame:`, errorData);
             throw new Error(errorData.error || 'Failed to generate frame');
           }
 
           const data = await response.json();
+          console.log(`[MORPH COMPONENT] ✅ Received ${percent}% frame, image size: ${data.image?.length || 0} chars`);
+
           return {
             percent,
             imageData: data.image,
@@ -85,20 +93,22 @@ export default function BottleMorphAnimation({
           if (isCancelled) return;
 
           generatedFrames.push(frame);
-          setProgress(((i + 1) / framePromises.length) * 100);
+          const currentProgress = ((i + 1) / framePromises.length) * 100;
+          setProgress(currentProgress);
+          console.log(`[MORPH COMPONENT] 📊 Progress: ${Math.round(currentProgress)}% (${i + 1}/${framePromises.length} frames)`);
         }
 
         // Sort frames by percentage to ensure proper order
         generatedFrames.sort((a, b) => a.percent - b.percent);
 
-        console.log(`Generated ${generatedFrames.length} frames successfully`);
+        console.log(`[MORPH COMPONENT] ✅ Generated ${generatedFrames.length} frames successfully`);
         setFrames(generatedFrames);
         setCost(framePercentages.length * 0.039);
         setIsGenerating(false);
 
       } catch (err) {
         if (isCancelled) return;
-        console.error('Frame generation error:', err);
+        console.error('[MORPH COMPONENT] ❌ Frame generation error:', err);
         setError(err instanceof Error ? err.message : 'Failed to generate frames');
         setIsGenerating(false);
       }
@@ -113,11 +123,19 @@ export default function BottleMorphAnimation({
 
   // Animate the morph sequence
   useEffect(() => {
-    if (isGenerating || frames.length === 0 || !canvasRef.current) return;
+    if (isGenerating || frames.length === 0 || !canvasRef.current) {
+      console.log(`[MORPH COMPONENT] ⏸️ Animation paused - generating: ${isGenerating}, frames: ${frames.length}, canvas: ${!!canvasRef.current}`);
+      return;
+    }
+
+    console.log(`[MORPH COMPONENT] 🎥 Starting animation with ${frames.length} frames over ${duration}ms`);
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      console.error('[MORPH COMPONENT] ❌ Could not get canvas 2d context');
+      return;
+    }
 
     const startTime = Date.now();
     const frameDuration = duration / (frames.length - 1);
@@ -145,6 +163,9 @@ export default function BottleMorphAnimation({
       if (loadedImages[0].complete) {
         canvas.width = loadedImages[0].naturalWidth;
         canvas.height = loadedImages[0].naturalHeight;
+        console.log(`[MORPH COMPONENT] 📐 Canvas size set to ${canvas.width}x${canvas.height}`);
+      } else {
+        console.error('[MORPH COMPONENT] ❌ First image not loaded, cannot set canvas size');
       }
 
       // Animation loop
@@ -154,11 +175,16 @@ export default function BottleMorphAnimation({
 
         if (totalProgress >= 1) {
           // Animation complete - show final frame
+          console.log('[MORPH COMPONENT] 🎉 Animation complete!');
           if (ctx && loadedImages[loadedImages.length - 1].complete) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(loadedImages[loadedImages.length - 1], 0, 0, canvas.width, canvas.height);
+            console.log('[MORPH COMPONENT] ✅ Final frame drawn to canvas');
           }
-          if (onComplete) onComplete();
+          if (onComplete) {
+            console.log('[MORPH COMPONENT] 📞 Calling onComplete callback');
+            onComplete();
+          }
           return;
         }
 
@@ -238,7 +264,11 @@ export default function BottleMorphAnimation({
       <canvas
         ref={canvasRef}
         className="max-w-full max-h-full object-contain"
-        style={{ display: isGenerating || error ? 'none' : 'block' }}
+        style={{
+          display: isGenerating || error ? 'none' : 'block',
+          width: '100%',
+          height: '100%'
+        }}
       />
 
       {!isGenerating && !error && (

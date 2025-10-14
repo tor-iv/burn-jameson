@@ -42,43 +42,34 @@ A premium whiskey bottle with these characteristics:
 
 function generateMorphPrompt(morphPercent: number, hasBoundingBox: boolean): string {
   if (morphPercent === 0) {
-    return 'Return the original image exactly as provided, with no modifications.';
+    // For 0%, just return the original - no transformation needed
+    return 'Show this exact image with no changes or modifications. Return the photograph as-is.';
   }
 
   if (morphPercent === 100) {
-    return `Transform the whiskey bottle in this image into a Keeper's Heart whiskey bottle.
+    return `Edit this photo by replacing the whiskey bottle with a Keeper's Heart whiskey bottle.
 
-${KEEPERS_HEART_DESCRIPTION}
+The new bottle should have:
+- Dark amber/brown glass
+- Heart-shaped label with "Keeper's Heart" text
+- Gold and burgundy red label colors
+- Premium craft whiskey appearance
 
-CRITICAL REQUIREMENTS:
-- Replace ONLY the bottle itself
-- Keep exact same lighting, shadows, and reflections
-- Preserve the background completely unchanged
-- Match the perspective and angle of the original bottle
-- Keep the same bottle position in frame
-- Maintain realistic shadows cast by the bottle
-- Make it look like a natural photograph, not composited
-
-The transformation should look completely natural and photorealistic.`;
+Important: Only replace the bottle. Keep everything else in the photo exactly the same - the background, lighting, table, shadows, and overall composition must remain unchanged.`;
   }
 
   // Partial morph (for intermediate frames)
-  const fromPercent = 100 - morphPercent;
-  return `Create a smooth blend/transition between the current whiskey bottle and a Keeper's Heart whiskey bottle.
+  return `Edit this photo by partially transforming the whiskey bottle toward a Keeper's Heart bottle (${morphPercent}% complete).
 
-Target bottle (Keeper's Heart):
-${KEEPERS_HEART_DESCRIPTION}
+Target bottle appearance:
+- Dark amber/brown glass
+- Heart-shaped label with "Keeper's Heart" text
+- Gold and burgundy red label colors
+- Premium craft whiskey look
 
-BLEND INSTRUCTIONS:
-- Show ${morphPercent}% transformation toward the Keeper's Heart bottle
-- Keep ${fromPercent}% of the original bottle's characteristics
-- Create a seamless, morphing effect between the two
-- Focus the transformation on the bottle only${hasBoundingBox ? ' (in the highlighted region)' : ''}
-- Preserve exact lighting, shadows, reflections, and background
-- Keep the same bottle position, perspective, and angle
-- Make the blend look natural and photorealistic
+Make the bottle look ${morphPercent}% like the Keeper's Heart bottle while keeping ${100 - morphPercent}% of the original bottle's appearance. Create a natural blend between the two styles.
 
-The result should look like a photograph captured mid-transformation.`;
+Keep the background, lighting, table, and shadows exactly the same.`;
 }
 
 export async function POST(request: NextRequest) {
@@ -115,7 +106,9 @@ export async function POST(request: NextRequest) {
     // Generate the appropriate prompt
     const prompt = generateMorphPrompt(morphPercent, !!boundingBox);
 
-    console.log(`Generating morph frame at ${morphPercent}%...`);
+    console.log(`[MORPH API] Generating morph frame at ${morphPercent}%...`);
+    console.log(`[MORPH API] Image size: ${base64Image.length} chars`);
+    console.log(`[MORPH API] Bounding box:`, boundingBox);
 
     // Call Gemini 2.5 Flash Image API
     const response = await fetch(
@@ -151,7 +144,7 @@ export async function POST(request: NextRequest) {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('Gemini API error:', errorData);
+      console.error(`[MORPH API] ❌ Gemini API error (status ${response.status}):`, errorData);
       return NextResponse.json(
         {
           error: 'Failed to generate morph frame',
@@ -161,9 +154,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log(`[MORPH API] ✅ Got response from Gemini, parsing...`);
     const data: GeminiResponse = await response.json();
 
     if (data.error) {
+      console.error(`[MORPH API] ❌ Gemini returned error:`, data.error);
       return NextResponse.json(
         {
           error: 'Gemini API error',
@@ -177,23 +172,55 @@ export async function POST(request: NextRequest) {
     const candidate = data.candidates?.[0];
     const parts = candidate?.content?.parts || [];
 
+    console.log(`[MORPH API] Response has ${data.candidates?.length || 0} candidates, ${parts.length} parts`);
+
     // Look for inline image data in the response
     let generatedImage = null;
+    let textResponse = null;
+
     for (const part of parts) {
       if (part.inlineData?.data) {
         generatedImage = part.inlineData.data;
+        console.log(`[MORPH API] ✅ Found generated image, size: ${generatedImage.length} chars`);
         break;
+      }
+      if (part.text) {
+        textResponse = part.text;
       }
     }
 
     if (!generatedImage) {
-      console.error('No image data in Gemini response:', JSON.stringify(data, null, 2));
+      console.error('[MORPH API] ❌ No image data in Gemini response.');
+      console.error('[MORPH API] Text response:', textResponse);
+      console.error('[MORPH API] Full response structure:', JSON.stringify({
+        candidatesCount: data.candidates?.length,
+        partsCount: parts.length,
+        partTypes: parts.map(p => Object.keys(p))
+      }, null, 2));
+
+      // Special case for 0% - just return the original image
+      if (morphPercent === 0) {
+        console.log('[MORPH API] 💡 0% morph failed, returning original image instead');
+        return NextResponse.json({
+          success: true,
+          morphPercent: 0,
+          image: body.image, // Return the original image
+          cost: 0, // No cost since we didn't generate anything
+          fallback: true,
+        });
+      }
+
       return NextResponse.json(
-        { error: 'No image generated in response' },
+        {
+          error: 'No image generated in response',
+          details: textResponse || 'Gemini returned text instead of image',
+          morphPercent,
+        },
         { status: 500 }
       );
     }
 
+    console.log(`[MORPH API] ✅ Successfully generated ${morphPercent}% morph frame`);
     return NextResponse.json({
       success: true,
       morphPercent,
@@ -202,7 +229,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Morph bottle error:', error);
+    console.error('[MORPH API] ❌ Exception during morph generation:', error);
     return NextResponse.json(
       {
         error: 'Morph generation failed',

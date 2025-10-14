@@ -5,6 +5,16 @@ import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import dynamic from "next/dynamic";
+import { resizeImage, getBase64Size, formatBytes } from "@/lib/image-utils";
+
+// Import the bottle morph animation
+const BottleMorphAnimation = dynamic(() => import("@/components/BottleMorphAnimation"), {
+  ssr: false,
+});
+
+const SimpleBottleMorph = dynamic(() => import("@/components/SimpleBottleMorph"), {
+  ssr: false,
+});
 
 const GifBurnAnimation = dynamic(() => import("@/components/GifBurnAnimation"), {
   ssr: false,
@@ -62,7 +72,6 @@ function expandBoundingBox(
 ): NormalizedBox | null {
   if (!box) return null;
 
-  // Minimal 5% expansion for tight fit
   const centerX = box.x + box.width / 2;
   const centerY = box.y + box.height / 2;
 
@@ -89,20 +98,24 @@ export default function ScanningPage() {
   const [rawBoundingBox, setRawBoundingBox] = useState<BoundingBox | null>(null);
   const [normalizedBox, setNormalizedBox] = useState<NormalizedBox | null>(null);
   const [expandedBox, setExpandedBox] = useState<NormalizedBox | null>(null);
-  const [particles, setParticles] = useState<
-    Array<{
-      startX: number;
-      startY: number;
-      driftX: number;
-      size: number;
-      color: string;
-      velocity: number;
-      rotation: number;
-    }>
-  >([]);
   const [showContinue, setShowContinue] = useState(false);
 
+  // NEW: State to control which animation to show
+  const [animationPhase, setAnimationPhase] = useState<'burn' | 'morph' | 'complete'>('burn');
+  const [useMorphAnimation, setUseMorphAnimation] = useState(false); // Toggle for morph feature
+
+  // NEW: Preloaded transformed image state
+  const [preloadedTransformedImage, setPreloadedTransformedImage] = useState<string | null>(null);
+  const [isPreloading, setIsPreloading] = useState(false);
+  const [preloadError, setPreloadError] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+
   const hasNavigated = useRef(false);
+
+  // Hydration safety - mark as mounted after first render
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
     const image = sessionStorage.getItem(`bottle_image_${sessionId}`);
@@ -113,6 +126,13 @@ export default function ScanningPage() {
     const expanded = sessionStorage.getItem(
       `bottle_bbox_expanded_${sessionId}`
     );
+
+    // Check if morph animation should be enabled
+    // Default to true, but allow override via sessionStorage
+    const storedValue = sessionStorage.getItem('morph_enabled');
+    const morphEnabled = storedValue === null ? true : storedValue === 'true';
+    console.log(`[SCANNING PAGE] 🎬 Morph animation enabled: ${morphEnabled}`);
+    setUseMorphAnimation(morphEnabled);
 
     if (image) {
       setBottleImage(image);
@@ -155,72 +175,179 @@ export default function ScanningPage() {
   }, [router, sessionId]);
 
   useEffect(() => {
-    const buttonTimer = setTimeout(() => setShowContinue(true), 3500);
+    if (useMorphAnimation) {
+      console.log('[SCANNING PAGE] 🔥 Starting morph animation flow');
+      // Two-phase animation: burn then morph
+      const burnTimer = setTimeout(() => {
+        console.log('[SCANNING PAGE] 🎨 Transitioning to morph phase');
+        setAnimationPhase('morph');
+      }, 2000); // Burn for 2 seconds
 
-    const autoTimer = setTimeout(() => {
-      if (!hasNavigated.current) {
-        hasNavigated.current = true;
-        router.push(`/success/${sessionId}`);
-      }
-    }, 5000); // Auto-advance after 5 seconds total
+      // DON'T auto-advance when morph is enabled - let the animation complete first
+      // The handleMorphComplete callback will show the continue button
 
-    return () => {
-      clearTimeout(buttonTimer);
-      clearTimeout(autoTimer);
-    };
-  }, [router, sessionId]);
+      return () => {
+        clearTimeout(burnTimer);
+      };
+    } else {
+      console.log('[SCANNING PAGE] 🔥 Starting burn-only animation flow');
+      // Original timing: just burn animation
+      const buttonTimer = setTimeout(() => setShowContinue(true), 3500);
+
+      const autoTimer = setTimeout(() => {
+        if (!hasNavigated.current) {
+          hasNavigated.current = true;
+          router.push(`/success/${sessionId}`);
+        }
+      }, 5000);
+
+      return () => {
+        clearTimeout(buttonTimer);
+        clearTimeout(autoTimer);
+      };
+    }
+  }, [router, sessionId, useMorphAnimation]);
 
   const activeBox = useMemo<NormalizedBox>(() => {
     return expandedBox ?? normalizedBox ?? FALLBACK_BOX;
   }, [expandedBox, normalizedBox]);
 
+  // NEW: Preload transformed image during burn animation
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    // Only preload if morph animation is enabled and we have the necessary data
+    if (!useMorphAnimation || !bottleImage) {
+      return;
+    }
 
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const box = activeBox;
+    let isCancelled = false;
 
-    const nextParticles = Array.from({ length: 35 }).map(() => {
-      const hue = 30 + Math.random() * 30; // Orange to red range
-      const lightness = 50 + Math.random() * 30;
-      const saturation = 90 + Math.random() * 10;
+    async function preloadTransformedImage() {
+      try {
+        setIsPreloading(true);
+        setPreloadError(null);
 
-      return {
-        startX: (box.x + Math.random() * box.width) * viewportWidth,
-        startY: (box.y + box.height * 0.9) * viewportHeight,
-        driftX: (Math.random() - 0.5) * viewportWidth * 0.15,
-        size: 2 + Math.random() * 6,
-        color: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
-        velocity: 200 + Math.random() * 150,
-        rotation: Math.random() * 360,
-      };
-    });
+        console.log('[SCANNING PAGE] 🚀 Starting preload of transformed image during burn animation');
 
-    setParticles(nextParticles);
-  }, [activeBox]);
+        // Check original image size
+        const originalSize = getBase64Size(bottleImage!);
+        console.log('[SCANNING PAGE] 📏 Original image size:', formatBytes(originalSize));
 
-  const fireBox = useMemo(() => {
-    // Remove size limits - let the animation cover the entire detected bottle
-    const widthPercent = activeBox.width * 100;
-    const heightPercent = activeBox.height * 100;
-    const centerXPercent = (activeBox.x + activeBox.width / 2) * 100;
-    const topPercent = activeBox.y * 100;
+        // Resize image if it's too large (> 1MB)
+        let imageToSend = bottleImage!;
+        if (originalSize > 1024 * 1024) {
+          console.log('[SCANNING PAGE] 📐 Image too large, resizing to max 1024x1024...');
+          try {
+            imageToSend = await resizeImage(bottleImage!, {
+              maxWidth: 1024,
+              maxHeight: 1024,
+              quality: 0.85,
+              format: 'image/jpeg',
+            });
+            const newSize = getBase64Size(imageToSend);
+            console.log('[SCANNING PAGE] ✅ Resized to:', formatBytes(newSize));
+          } catch (resizeError) {
+            console.error('[SCANNING PAGE] ⚠️ Resize failed, using original:', resizeError);
+            // Continue with original image if resize fails
+          }
+        }
 
-    return {
-      top: `${topPercent}%`,
-      left: `${centerXPercent}%`,
-      width: `${widthPercent}%`,
-      height: `${heightPercent}%`,
-      transform: "translate(-50%, 0)",
+        console.log('[SCANNING PAGE] 📦 Sending to API...');
+        console.log('[SCANNING PAGE] Image length:', imageToSend.length, 'chars');
+        console.log('[SCANNING PAGE] Bounding box:', activeBox);
+
+        const response = await fetch('/api/morph-bottle-simple', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image: imageToSend,
+            boundingBox: activeBox,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('[SCANNING PAGE] ❌ Preload API error - Status:', response.status);
+          console.error('[SCANNING PAGE] ❌ Error response:', errorText);
+
+          let errorData;
+          try {
+            errorData = JSON.parse(errorText);
+          } catch {
+            errorData = { error: errorText || 'Unknown error' };
+          }
+
+          throw new Error(errorData.error || errorData.details || 'Failed to preload transformation');
+        }
+
+        const data = await response.json();
+        console.log('[SCANNING PAGE] ✅ Received transformed image for preload');
+        console.log('[SCANNING PAGE] Response keys:', Object.keys(data));
+        console.log('[SCANNING PAGE] Has transformedImage:', !!data.transformedImage);
+        console.log('[SCANNING PAGE] transformedImage size:', data.transformedImage?.length || 0, 'chars');
+
+        if (isCancelled) return;
+
+        // Preload the image into browser cache
+        console.log('[SCANNING PAGE] 🖼️ Loading image into browser cache...');
+        const img = new Image();
+
+        img.onload = () => {
+          if (isCancelled) return;
+          console.log('[SCANNING PAGE] ✅ Image preloaded and cached successfully!');
+          setPreloadedTransformedImage(data.transformedImage);
+          setIsPreloading(false);
+        };
+
+        img.onerror = (err) => {
+          console.error('[SCANNING PAGE] ❌ Failed to preload image into cache:', err);
+          // Still save it - SimpleBottleMorph will try to use it
+          if (!isCancelled) {
+            setPreloadedTransformedImage(data.transformedImage);
+            setIsPreloading(false);
+          }
+        };
+
+        img.src = data.transformedImage;
+
+      } catch (err) {
+        if (isCancelled) return;
+        console.error('[SCANNING PAGE] ❌ Preload error:', err);
+        setPreloadError(err instanceof Error ? err.message : 'Failed to preload transformation');
+        setIsPreloading(false);
+      }
+    }
+
+    preloadTransformedImage();
+
+    return () => {
+      isCancelled = true;
     };
-  }, [activeBox]);
+  }, [useMorphAnimation, bottleImage, activeBox]);
 
   const handleContinue = () => {
     if (hasNavigated.current) return;
     hasNavigated.current = true;
     router.push(`/success/${sessionId}`);
   };
+
+  const handleMorphComplete = () => {
+    console.log('[SCANNING PAGE] ✅ Bottle morph animation complete callback');
+    setAnimationPhase('complete');
+    setShowContinue(true);
+  };
+
+  // Log current animation phase
+  useEffect(() => {
+    console.log(`[SCANNING PAGE] 📍 Animation phase: ${animationPhase}`);
+  }, [animationPhase]);
+
+  // Log when morph component should render
+  useEffect(() => {
+    if ((animationPhase === 'morph' || animationPhase === 'complete') && useMorphAnimation) {
+      console.log('[SCANNING PAGE] 🎨 Rendering SimpleBottleMorph component (phase:', animationPhase, ')');
+      console.log('[SCANNING PAGE] 📦 Preloaded image available:', !!preloadedTransformedImage);
+    }
+  }, [animationPhase, useMorphAnimation, preloadedTransformedImage]);
 
   return (
     <motion.div
@@ -236,27 +363,49 @@ export default function ScanningPage() {
         ease: "easeInOut",
       }}
     >
-      {bottleImage ? (
+      {/* Background bottle image (for burn animation) or hidden during morph */}
+      {bottleImage && animationPhase === 'burn' && (
         <img
           src={bottleImage}
           alt="Captured bottle"
           className="absolute inset-0 w-full h-full object-cover"
         />
-      ) : (
-        <div className="relative z-10">
-          <div className="w-64 h-96 bg-gradient-to-b from-amber-900 via-amber-700 to-amber-500 rounded-lg opacity-80" />
-        </div>
       )}
 
-      {/* GIF Burn Animation */}
-      {bottleImage && (
+      {/* Burn Animation (Phase 1) */}
+      {bottleImage && animationPhase === 'burn' && !useMorphAnimation && (
         <GifBurnAnimation boundingBox={activeBox} imageUrl={bottleImage} />
       )}
 
+      {/* Burn Animation (Phase 1) - For morph-enabled flow */}
+      {bottleImage && animationPhase === 'burn' && useMorphAnimation && (
+        <GifBurnAnimation boundingBox={activeBox} imageUrl={bottleImage} />
+      )}
+
+      {/* Morph Animation (Phase 2 & 3) - Keep visible after completing */}
+      {bottleImage && (animationPhase === 'morph' || animationPhase === 'complete') && useMorphAnimation && (
+        <div className="absolute inset-0 w-full h-full">
+          <SimpleBottleMorph
+            capturedImage={bottleImage}
+            boundingBox={activeBox}
+            onComplete={handleMorphComplete}
+            duration={2000} // 2 second cross-fade
+            preloadedImage={preloadedTransformedImage}
+          />
+        </div>
+      )}
+
+      {/* Debug bounding box */}
       {process.env.NODE_ENV !== "production" && rawBoundingBox && (
         <div
           className="absolute pointer-events-none border-2 border-green-500/70 z-40"
-          style={fireBox}
+          style={{
+            top: `${activeBox.y * 100}%`,
+            left: `${(activeBox.x + activeBox.width / 2) * 100}%`,
+            width: `${activeBox.width * 100}%`,
+            height: `${activeBox.height * 100}%`,
+            transform: "translate(-50%, 0)",
+          }}
         >
           <div className="absolute top-2 left-2 bg-green-500 text-white px-2 py-1 text-xs">
             DEBUG: Bounding Box
@@ -264,6 +413,7 @@ export default function ScanningPage() {
         </div>
       )}
 
+      {/* Continue button */}
       {showContinue && (
         <div className="absolute bottom-16 left-0 right-0 flex justify-center z-50 px-6">
           <Button
@@ -273,6 +423,33 @@ export default function ScanningPage() {
           >
             Continue
           </Button>
+        </div>
+      )}
+
+      {/* Development toggle for morph feature */}
+      {process.env.NODE_ENV !== "production" && (
+        <div className="absolute top-4 right-4 z-50 space-y-2">
+          <button
+            onClick={() => {
+              const newValue = !useMorphAnimation;
+              setUseMorphAnimation(newValue);
+              sessionStorage.setItem('morph_enabled', newValue.toString());
+            }}
+            className="bg-purple-600 text-white px-4 py-2 rounded text-sm block w-full"
+          >
+            Morph: {useMorphAnimation ? 'ON' : 'OFF'}
+          </button>
+          <div className="bg-black/80 text-white px-4 py-2 rounded text-xs">
+            Phase: {animationPhase}
+          </div>
+          <div className="bg-black/80 text-white px-4 py-2 rounded text-xs">
+            Preload: {isPreloading ? '⏳ Loading...' : preloadedTransformedImage ? '✅ Ready' : preloadError ? '❌ Error' : '⏸️ Waiting'}
+          </div>
+          {preloadError && (
+            <div className="bg-red-900/80 text-white px-4 py-2 rounded text-xs max-w-xs">
+              {preloadError}
+            </div>
+          )}
         </div>
       )}
     </motion.div>
