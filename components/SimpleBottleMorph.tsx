@@ -19,14 +19,14 @@ interface SimpleBottleMorphProps {
 
 export default function SimpleBottleMorph({
   capturedImage,
-  boundingBox,
+  boundingBox, // Note: Not used in simplified version, but kept for API compatibility
   onComplete,
   duration = 2000,
   preloadedImage,
 }: SimpleBottleMorphProps) {
   const [transformedImage, setTransformedImage] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error] = useState<string | null>(null); // Kept for future error handling
   const [opacity, setOpacity] = useState(0);
   const [animationComplete, setAnimationComplete] = useState(false);
   const animationFrameRef = useRef<number | undefined>(undefined);
@@ -51,13 +51,30 @@ export default function SimpleBottleMorph({
     // Set the transformed image immediately
     setTransformedImage(preloadedImage);
     setIsGenerating(false);
+  }, [preloadedImage]);
+
+  // ANIMATION EFFECT: Start animation after image is rendered
+  useEffect(() => {
+    // Only run if we have the transformed image and we're not generating
+    if (!transformedImage || isGenerating || animationComplete) {
+      return;
+    }
 
     console.log('[SIMPLE MORPH] 🎬 Starting cross-fade animation');
 
-    // Start cross-fade animation using refs to avoid re-renders
-    requestAnimationFrame(() => {
+    // Wait for next tick to ensure DOM has updated with the image element
+    const timeoutId = setTimeout(() => {
       const startTime = Date.now();
       const transformedImg = document.getElementById('transformed-bottle-img') as HTMLImageElement;
+
+      if (!transformedImg) {
+        console.error('[SIMPLE MORPH] ❌ Could not find transformed-bottle-img element!');
+        console.error('[SIMPLE MORPH] Debug - isGenerating:', isGenerating);
+        console.error('[SIMPLE MORPH] Debug - transformedImage exists:', !!transformedImage);
+        return;
+      }
+
+      console.log('[SIMPLE MORPH] ✅ Found transformed image element, starting animation');
 
       function animate() {
         const elapsed = Date.now() - startTime;
@@ -84,14 +101,15 @@ export default function SimpleBottleMorph({
       }
 
       animate();
-    });
+    }, 100); // Small delay to ensure DOM is ready
 
     return () => {
+      clearTimeout(timeoutId);
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [preloadedImage, duration]);
+  }, [transformedImage, isGenerating, duration, animationComplete]);
 
   return (
     <div className="relative w-full h-full bg-black">
@@ -118,7 +136,7 @@ export default function SimpleBottleMorph({
               Creating Keeper's Heart bottle
             </div>
             <div className="text-xs text-gray-400">
-              Using AI image generation ($0.04)
+              AI-powered realistic bottle replacement
             </div>
             {/* Debug button */}
             {process.env.NODE_ENV !== "production" && (
@@ -160,49 +178,24 @@ export default function SimpleBottleMorph({
         />
       )}
 
-      {/* Transformed image (fades in over original, clipped to bounding box) */}
-      {transformedImage && !isGenerating && boundingBox && (
-        <div
-          className="absolute z-10 overflow-hidden"
-          style={{
-            top: `${boundingBox.y * 100}%`,
-            left: `${boundingBox.x * 100}%`,
-            width: `${boundingBox.width * 100}%`,
-            height: `${boundingBox.height * 100}%`,
-          }}
-        >
-          <img
-            id="transformed-bottle-img"
-            src={transformedImage}
-            alt="Keeper's Heart bottle"
-            className="absolute"
-            style={{
-              opacity: 0,
-              // Position the full transformed image, but only the bbox area is visible due to parent clipping
-              top: `${-boundingBox.y * 100 / boundingBox.height}%`,
-              left: `${-boundingBox.x * 100 / boundingBox.width}%`,
-              width: `${100 / boundingBox.width}%`,
-              height: `${100 / boundingBox.height}%`,
-            }}
-          />
-        </div>
-      )}
-
-      {/* Fallback: If no bounding box, show transformed image full screen (old behavior) */}
-      {transformedImage && !isGenerating && !boundingBox && (
+      {/* Transformed image (fades in over original) */}
+      {/* SIMPLIFIED: Show full-screen since Gemini transforms the whole image while keeping everything else the same */}
+      {transformedImage && !isGenerating && (
         <img
           id="transformed-bottle-img"
           src={transformedImage}
           alt="Keeper's Heart bottle"
-          className="absolute inset-0 w-full h-full object-cover z-1"
+          className="absolute inset-0 w-full h-full object-cover z-10"
           style={{ opacity: 0 }}
+          onLoad={() => console.log('[SIMPLE MORPH] 🖼️ Transformed image loaded into DOM')}
+          onError={(e) => console.error('[SIMPLE MORPH] ❌ Transformed image failed to load:', e)}
         />
       )}
 
-      {/* Cost indicator */}
-      {transformedImage && !isGenerating && (
+      {/* Debug indicator */}
+      {transformedImage && !isGenerating && process.env.NODE_ENV !== "production" && (
         <div className="absolute bottom-4 right-4 text-xs text-white/60 bg-black/50 px-3 py-1 rounded z-20">
-          Cost: $0.04 | Opacity: {Math.round(opacity * 100)}%
+          Opacity: {Math.round(opacity * 100)}%
         </div>
       )}
     </div>

@@ -1,21 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import sharp from 'sharp';
 
 /**
- * Simplified bottle morph API that only generates the final 100% transformed image
- * This avoids issues with Gemini not generating intermediate frames
+ * Bottle morph API using Gemini 2.5 Flash Image for realistic inpainting
  *
- * NOW INCLUDES: Keeper's Heart reference image sent to Gemini for accurate morphing
+ * How it works:
+ * 1. Receives original bottle photo + bounding box (normalized 0-1 coordinates)
+ * 2. Crops the bottle region from the original image (with padding for context)
+ * 3. Sends the cropped region + Keeper's Heart reference to Gemini
+ * 4. Gemini removes the competitor bottle and replaces it with Keeper's Heart
+ * 5. Composites the edited crop back onto the original image
+ *
+ * Benefits:
+ * - Realistic bottle replacement with AI inpainting
+ * - Preserves hands, background, lighting naturally
+ * - No person detection issues (only sending cropped bottle region)
+ * - Reference-based editing ensures accurate Keeper's Heart bottle
  */
 
 interface MorphRequest {
-  image: string; // base64 encoded image
+  image: string; // base64 encoded image (with or without data URL prefix)
   boundingBox?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+    x: number; // Normalized 0-1
+    y: number; // Normalized 0-1
+    width: number; // Normalized 0-1
+    height: number; // Normalized 0-1
   };
 }
 
@@ -30,6 +41,8 @@ interface GeminiResponse {
         };
       }>;
     };
+    finishReason?: string;
+    finishMessage?: string;
   }>;
   error?: {
     message: string;
@@ -37,24 +50,14 @@ interface GeminiResponse {
   };
 }
 
-// Increase timeout for this route (Gemini image generation can take 10-20 seconds)
-export const maxDuration = 60; // 60 seconds
+// Timeout for Gemini processing (5-10 seconds typical)
+export const maxDuration = 30; // 30 seconds
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   console.log('[MORPH-SIMPLE API] 🚀 Request received at', new Date().toISOString());
 
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      console.error('[MORPH-SIMPLE API] ❌ GEMINI_API_KEY not configured');
-      return NextResponse.json(
-        { error: 'GEMINI_API_KEY not configured' },
-        { status: 500 }
-      );
-    }
-
     console.log('[MORPH-SIMPLE API] 📦 Parsing request body...');
     const body: MorphRequest = await request.json();
     const { image, boundingBox } = body;
@@ -78,33 +81,111 @@ export async function POST(request: NextRequest) {
     console.log('  - Approximate size:', Math.round(base64Image.length * 0.75 / 1024), 'KB');
     console.log('  - Has bounding box:', !!boundingBox);
 
-    // Load the Keeper's Heart reference image
+    if (!boundingBox) {
+      console.error('[MORPH-SIMPLE API] ❌ No bounding box provided');
+      return NextResponse.json(
+        { error: 'Bounding box required for bottle replacement' },
+        { status: 400 }
+      );
+    }
+
+    // Convert base64 to buffer for Sharp processing
+    const originalBuffer = Buffer.from(base64Image, 'base64');
+
+    // Get original image metadata
+    const originalMetadata = await sharp(originalBuffer).metadata();
+    const imgWidth = originalMetadata.width || 1;
+    const imgHeight = originalMetadata.height || 1;
+
+    console.log('[MORPH-SIMPLE API] 📐 Original image dimensions:', imgWidth, 'x', imgHeight);
+
+    // STEP 1: Calculate crop region with padding
+    // Add 15% padding around the bottle for context (helps Gemini understand surroundings)
+    const PADDING_PERCENT = 0.15;
+
+    // Convert normalized bounding box (0-1) to pixel coordinates
+    let bottleX = Math.round(boundingBox.x * imgWidth);
+    let bottleY = Math.round(boundingBox.y * imgHeight);
+    let bottleWidth = Math.round(boundingBox.width * imgWidth);
+    let bottleHeight = Math.round(boundingBox.height * imgHeight);
+
+    console.log('[MORPH-SIMPLE API] 📦 Original bottle region (pixels):', {
+      x: bottleX,
+      y: bottleY,
+      width: bottleWidth,
+      height: bottleHeight,
+    });
+
+    // Calculate padded crop region
+    const padX = Math.round(bottleWidth * PADDING_PERCENT);
+    const padY = Math.round(bottleHeight * PADDING_PERCENT);
+
+    const cropX = Math.max(0, bottleX - padX);
+    const cropY = Math.max(0, bottleY - padY);
+    const cropWidth = Math.min(bottleWidth + 2 * padX, imgWidth - cropX);
+    const cropHeight = Math.min(bottleHeight + 2 * padY, imgHeight - cropY);
+
+    console.log('[MORPH-SIMPLE API] ✂️  Crop region with padding:', {
+      x: cropX,
+      y: cropY,
+      width: cropWidth,
+      height: cropHeight,
+      paddingPercent: `${PADDING_PERCENT * 100}%`,
+    });
+
+    // Extract the bottle crop
+    const bottleCrop = await sharp(originalBuffer)
+      .extract({
+        left: cropX,
+        top: cropY,
+        width: cropWidth,
+        height: cropHeight,
+      })
+      .jpeg({ quality: 95 }) // High quality for Gemini
+      .toBuffer();
+
+    const bottleCropBase64 = bottleCrop.toString('base64');
+    console.log('[MORPH-SIMPLE API] ✅ Extracted bottle crop:', Math.round(bottleCropBase64.length * 0.75 / 1024), 'KB');
+
+    // STEP 2: Load Keeper's Heart reference and call Gemini
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error('[MORPH-SIMPLE API] ❌ GEMINI_API_KEY not configured');
+      return NextResponse.json(
+        { error: 'GEMINI_API_KEY not configured' },
+        { status: 500 }
+      );
+    }
+
     const keepersHeartPath = path.join(process.cwd(), 'public', 'images', 'keepersheart.png');
     const keepersHeartBuffer = fs.readFileSync(keepersHeartPath);
     const keepersHeartBase64 = keepersHeartBuffer.toString('base64');
 
     console.log('[MORPH-SIMPLE API] 📸 Loaded Keeper\'s Heart reference image');
-    console.log('  - Reference size:', Math.round(keepersHeartBase64.length * 0.75 / 1024), 'KB');
 
-    const prompt = `Edit the FIRST image (the scanned bottle photo) by replacing the whiskey bottle with the EXACT bottle shown in the SECOND reference image (the Keeper's Heart bottle).
+    const prompt = `Replace the whiskey bottle in the first image with the exact bottle shown in the second reference image.
 
-IMPORTANT: Study the SECOND reference image carefully and match these exact details:
-- The distinctive curved bottle shape with elegant profile and decorative neck
-- The cream/beige shield-shaped label with "KEEPER'S HEART" text arranged in an arc
-- The copper/gold decorative bands on the neck and base of the bottle
-- The amber/golden whiskey color visible through the glass
-- The black decorative cap with copper/gold pattern
-- The exact label design including the clock/keys emblem in the center
-- "IRISH + AMERICAN WHISKEY" text below the main label
+CRITICAL REQUIREMENTS:
+- Remove the original whiskey bottle completely
+- Place the Keeper's Heart bottle (from second image) in the exact same position and angle
+- Preserve any hands, fingers, or background elements visible in the first image
+- Match the lighting, shadows, and perspective of the original scene
+- Fill in the background naturally where the old bottle was removed
+- The new bottle should look like it's being held in the same way
 
-CRITICAL: Only replace the bottle in the first image. Keep everything else EXACTLY the same - the background, lighting, table, shadows, reflections, hand position (if any), and overall composition must remain completely unchanged. The new bottle should match the exact same perspective, angle, and position as the original bottle.`;
+Study the second reference image carefully for these details:
+- Distinctive curved bottle shape with elegant profile
+- Cream/beige shield-shaped label with "KEEPER'S HEART" text
+- Copper/gold decorative bands on neck and base
+- Amber/golden whiskey color through the glass
+- Black decorative cap with gold pattern
 
-    console.log(`[MORPH-SIMPLE API] 🎨 Calling Gemini API with both images...`);
+Output ONLY the edited image with the same dimensions as the first image.`;
 
+    console.log('[MORPH-SIMPLE API] 🎨 Calling Gemini API for bottle replacement...');
     const geminiStartTime = Date.now();
 
-    // Call Gemini 2.5 Flash Image API with BOTH images
-    const response = await fetch(
+    const geminiResponse = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
       {
         method: 'POST',
@@ -116,11 +197,10 @@ CRITICAL: Only replace the bottle in the first image. Keep everything else EXACT
           contents: [
             {
               parts: [
-                { text: prompt },
                 {
                   inlineData: {
                     mimeType: 'image/jpeg',
-                    data: base64Image,
+                    data: bottleCropBase64,
                   },
                 },
                 {
@@ -129,6 +209,7 @@ CRITICAL: Only replace the bottle in the first image. Keep everything else EXACT
                     data: keepersHeartBase64,
                   },
                 },
+                { text: prompt },
               ],
             },
           ],
@@ -144,83 +225,116 @@ CRITICAL: Only replace the bottle in the first image. Keep everything else EXACT
     const geminiEndTime = Date.now();
     console.log(`[MORPH-SIMPLE API] ⏱️  Gemini API responded in ${geminiEndTime - geminiStartTime}ms`);
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      console.error(`[MORPH-SIMPLE API] ❌ Gemini API error (status ${response.status}):`, errorData);
+    if (!geminiResponse.ok) {
+      const errorData = await geminiResponse.json().catch(() => ({}));
+      console.error(`[MORPH-SIMPLE API] ❌ Gemini API error (status ${geminiResponse.status}):`, errorData);
       return NextResponse.json(
         {
           error: 'Failed to generate transformed bottle',
           details: errorData.error?.message || 'Unknown error',
         },
-        { status: response.status }
+        { status: geminiResponse.status }
       );
     }
 
-    console.log(`[MORPH-SIMPLE API] ✅ Got response from Gemini, parsing...`);
-    const data: GeminiResponse = await response.json();
-
-    console.log(`[MORPH-SIMPLE API] ⏱️  Total time: ${Date.now() - startTime}ms`);
+    const geminiData: GeminiResponse = await geminiResponse.json();
 
     console.log('[MORPH-SIMPLE API] Response structure:', JSON.stringify({
-      hasCandidates: !!data.candidates,
-      candidatesCount: data.candidates?.length || 0,
-      hasError: !!data.error,
+      hasCandidates: !!geminiData.candidates,
+      candidatesCount: geminiData.candidates?.length || 0,
+      hasError: !!geminiData.error,
+      finishReason: geminiData.candidates?.[0]?.finishReason,
     }));
 
-    if (data.error) {
-      console.error(`[MORPH-SIMPLE API] ❌ Gemini returned error:`, data.error);
+    if (geminiData.error) {
+      console.error(`[MORPH-SIMPLE API] ❌ Gemini returned error:`, geminiData.error);
       return NextResponse.json(
         {
           error: 'Gemini API error',
-          details: data.error.message,
+          details: geminiData.error.message,
         },
         { status: 400 }
       );
     }
 
-    // Extract the generated image from the response
-    const candidate = data.candidates?.[0];
+    // Check for finish reason issues
+    const candidate = geminiData.candidates?.[0];
+    if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+      console.error(`[MORPH-SIMPLE API] ❌ Gemini finish reason:`, candidate.finishReason);
+      console.error(`[MORPH-SIMPLE API] Finish message:`, candidate.finishMessage);
+      return NextResponse.json(
+        {
+          error: 'Gemini generation failed',
+          details: candidate.finishMessage || candidate.finishReason,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Extract the edited crop from response
     const parts = candidate?.content?.parts || [];
-
-    console.log('[MORPH-SIMPLE API] Parts in response:', parts.length);
-    console.log('[MORPH-SIMPLE API] Part types:', parts.map(p =>
-      p.inlineData ? 'inlineData' : p.text ? 'text' : 'unknown'
-    ));
-
-    let generatedImage = null;
-    let textResponse = null;
+    let editedCropBase64 = null;
 
     for (const part of parts) {
       if (part.inlineData?.data) {
-        generatedImage = part.inlineData.data;
-        console.log(`[MORPH-SIMPLE API] ✅ Found generated image, size: ${generatedImage.length} chars`);
-        console.log(`[MORPH-SIMPLE API] MIME type: ${part.inlineData.mimeType}`);
+        editedCropBase64 = part.inlineData.data;
+        console.log(`[MORPH-SIMPLE API] ✅ Found edited crop, size: ${editedCropBase64.length} chars`);
         break;
-      }
-      if (part.text) {
-        textResponse = part.text;
-        console.log('[MORPH-SIMPLE API] Text response:', textResponse.substring(0, 200));
       }
     }
 
-    if (!generatedImage) {
-      console.error('[MORPH-SIMPLE API] ❌ No image data in response');
-      console.error('[MORPH-SIMPLE API] Full response:', JSON.stringify(data, null, 2));
+    if (!editedCropBase64) {
+      console.error('[MORPH-SIMPLE API] ❌ No image data in Gemini response');
       return NextResponse.json(
         {
-          error: 'No image generated',
-          details: textResponse || 'Gemini returned text instead of image',
+          error: 'No image generated by Gemini',
+          details: 'Response contained no image data',
         },
         { status: 500 }
       );
     }
 
-    console.log(`[MORPH-SIMPLE API] ✅ Successfully generated transformed bottle`);
+    // STEP 3: Composite the edited crop back onto the original image
+    const editedCropBuffer = Buffer.from(editedCropBase64, 'base64');
+
+    // Get dimensions of the edited crop from Gemini
+    const editedCropMetadata = await sharp(editedCropBuffer).metadata();
+    console.log('[MORPH-SIMPLE API] 📏 Edited crop dimensions from Gemini:', editedCropMetadata.width, 'x', editedCropMetadata.height);
+    console.log('[MORPH-SIMPLE API] 📏 Expected crop dimensions:', cropWidth, 'x', cropHeight);
+
+    // Resize the edited crop to match our exact crop dimensions
+    // (Gemini sometimes returns different sizes)
+    const resizedEditedCrop = await sharp(editedCropBuffer)
+      .resize(cropWidth, cropHeight, {
+        fit: 'fill', // Force exact dimensions
+        kernel: 'lanczos3', // High-quality resizing
+      })
+      .toBuffer();
+
+    console.log('[MORPH-SIMPLE API] 🔧 Compositing edited crop back onto original...');
+
+    const finalImage = await sharp(originalBuffer)
+      .composite([
+        {
+          input: resizedEditedCrop,
+          top: cropY,
+          left: cropX,
+          blend: 'over',
+        },
+      ])
+      .jpeg({ quality: 90 })
+      .toBuffer();
+
+    const finalBase64 = finalImage.toString('base64');
+
+    console.log(`[MORPH-SIMPLE API] ✅ Successfully created transformed bottle (${Math.round(finalBase64.length * 0.75 / 1024)} KB)`);
+    console.log(`[MORPH-SIMPLE API] ⏱️  Total time: ${Date.now() - startTime}ms`);
+
     return NextResponse.json({
       success: true,
       originalImage: image,
-      transformedImage: `data:image/jpeg;base64,${generatedImage}`,
-      cost: 0.039,
+      transformedImage: `data:image/jpeg;base64,${finalBase64}`,
+      cost: 0.039, // Gemini 2.5 Flash Image cost
     });
 
   } catch (error) {
