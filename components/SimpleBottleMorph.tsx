@@ -94,7 +94,7 @@ export default function SimpleBottleMorph({
   }, [preloadedImage, duration]);
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center bg-black">
+    <div className="relative w-full h-full bg-black">
       {/* Debug overlay - always visible in dev */}
       {process.env.NODE_ENV !== "production" && (
         <div className="absolute top-20 left-4 z-50 bg-purple-900/90 text-white p-4 rounded text-xs space-y-1 max-w-xs">
@@ -160,8 +160,36 @@ export default function SimpleBottleMorph({
         />
       )}
 
-      {/* Transformed image (fades in over original) */}
-      {transformedImage && !isGenerating && (
+      {/* Transformed image (fades in over original, clipped to bounding box) */}
+      {transformedImage && !isGenerating && boundingBox && (
+        <div
+          className="absolute z-10 overflow-hidden"
+          style={{
+            top: `${boundingBox.y * 100}%`,
+            left: `${boundingBox.x * 100}%`,
+            width: `${boundingBox.width * 100}%`,
+            height: `${boundingBox.height * 100}%`,
+          }}
+        >
+          <img
+            id="transformed-bottle-img"
+            src={transformedImage}
+            alt="Keeper's Heart bottle"
+            className="absolute"
+            style={{
+              opacity: 0,
+              // Position the full transformed image, but only the bbox area is visible due to parent clipping
+              top: `${-boundingBox.y * 100 / boundingBox.height}%`,
+              left: `${-boundingBox.x * 100 / boundingBox.width}%`,
+              width: `${100 / boundingBox.width}%`,
+              height: `${100 / boundingBox.height}%`,
+            }}
+          />
+        </div>
+      )}
+
+      {/* Fallback: If no bounding box, show transformed image full screen (old behavior) */}
+      {transformedImage && !isGenerating && !boundingBox && (
         <img
           id="transformed-bottle-img"
           src={transformedImage}

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Burning Paper — Clean (no UI/backdrop)</title>
+<style>
+  :root { --w: 520px; --h: 660px; }
+  html,body{height:100%}
+  body{
+    margin:0; display:grid; place-items:center; background:#0c0d11; color:#ddd;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+  }
+  .scene{ position:relative; width:var(--w); height:var(--h); }
+  canvas{ position:absolute; inset:0; display:block; }
+  /* subtle heat shimmer on fire layer */
+  .heat { filter:url(#heat-wobble) }
+</style>
+</head>
+<body>
+
+<!-- heat shimmer -->
+<svg width="0" height="0" style="position:absolute">
+  <filter id="heat-wobble">
+    <feTurbulence type="fractalNoise" baseFrequency="0.9 0.07" numOctaves="2" seed="7" result="n"/>
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="5" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<div class="scene" id="scene">
+  <!-- Removed backdrop and button -->
+  <canvas id="fire" class="heat"></canvas>   <!-- flames behind the sheet -->
+  <canvas id="paper"></canvas>               <!-- the paper (gets eroded to transparent) -->
+</div>
+
+<script>
+(() => {
+  // ===== CONFIG (unchanged core look, no UI) =====
+  const CFG = {
+    paperColor: '#f3f0e7',
+    paperFibers: 0.18,
+    paperShadow: 0.35,
+    burnSpeed: 42,
+    stopFromTop: 40,
+    edgeNoiseScale: 0.022,
+    edgeRagged: 26,
+    fieldScale: 0.42,
+    octaves: 4,
+    noiseAmp: 1.1,
+    riseSpeed: 0.24,
+    lateralFlow: 0.11,
+    curlBend: 0.65,
+    edgeSharpness: 1.55,
+    baseHeat: 0.18,
+    crownBoost: 0.35,
+    wind: 8,
+    emberRate: 45,
+    ashRate: 70,
+    SHOW_EDGE: false,
+    SHOW_GLOW: false
+  };
+
+  const RAMP = [
+    [0.00,[0,0,0,0]],[0.15,[35,8,0,40]],[0.30,[110,25,6,115]],
+    [0.55,[220,110,25,185]],[0.78,[255,205,70,235]],
+    [0.93,[255,245,210,255]],[1.00,[255,255,255,255]]
+  ];
+
+  const scene = document.getElementById('scene');
+  const fireC = document.getElementById('fire');
+  const paperC = document.getElementById('paper');
+  const fctx = fireC.getContext('2d');
+  const pctx = paperC.getContext('2d');
+
+  const fieldCanvas = document.createElement('canvas');
+  const fctxField = fieldCanvas.getContext('2d', { willReadFrequently: true });
+  let fieldW=0, fieldH=0;
+
+  const W = () => fireC.clientWidth;
+  const H = () => fireC.clientHeight;
+
+  let frontY = 0;
+  const embers = [], ashes = [];
+
+  // -------- helpers --------
+  const rand=(a,b)=>a+Math.random()*(b-a);
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  function hash(x,y,seed=1337){ let n=x*374761393+y*668265263+seed*1442695040; n=(n^(n>>>13))*1274126177; return ((n^(n>>>16))&0xfffffff)/0xfffffff; }
+  function vnoise(x,y,seed){ const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy;
+    const a=hash(ix,iy,seed),b=hash(ix+1,iy,seed),c=hash(ix,iy+1,seed),d=hash(ix+1,iy+1,seed);
+    const sx=fx*fx*(3-2*fx), sy=fy*fy*(3-2*fy); return (a*(1-sx)+b*sx)*(1-sy)+(c*(1-sx)+d*sx)*sy; }
+  function fbm(x,y,t,oct,amp){ let f=0,a=amp,s=1; for(let i=0;i<oct;i++){ const n=vnoise(x*s+t*.37,y*s-t*.19,1234+i)*2-1; f+=n*a; a*=.53; s*=1.9; } return f; }
+  function curl(x,y,t){ const e=.7; const n1=fbm(x+e,y,t,2,1)-fbm(x-e,y,t,2,1); const n2=fbm(x,y+e,t,2,1)-fbm(x,y-e,t,2,1); return {x:n2*.5,y:-n1*.5}; }
+  function rampLookup(stops,val){ const v=clamp(val,0,1); for(let i=1;i<stops.length;i++){ if(v<=stops[i][0]){ const [t0,c0]=stops[i-1],[t1,c1]=stops[i]; const u=(v-t0)/(t1-t0); return [c0[0]*(1-u)+c1[0]*u, c0[1]*(1-u)+c1[1]*u, c0[2]*(1-u)+c1[2]*u, c0[3]*(1-u)+c1[3]*u].map(Math.round); } } return stops.at(-1)[1]; }
+  function noise1D(x,scale){ const i=Math.floor(x*scale), f=x*scale-i; const h=n=>{const t=Math.sin((n*127.1+311.7)*43758.5453)*43758.5453; return t-Math.floor(t);}; const a=h(i),b=h(i+1),s=f*f*(3-2*f); return a*(1-s)+b*s; }
+
+  // -------- layout --------
+  function resize(){
+    const r=scene.getBoundingClientRect(), dpr=Math.max(1,devicePixelRatio||1);
+    for(const c of [fireC,paperC]){ c.width=Math.floor(r.width*dpr); c.height=Math.floor(r.height*dpr); c.style.width=r.width+'px'; c.style.height=r.height+'px'; c.getContext('2d').setTransform(dpr,0,0,dpr,0,0); }
+    fieldW=Math.max(64,Math.floor(r.width*CFG.fieldScale)); fieldH=Math.max(64,Math.floor(r.height*CFG.fieldScale));
+    fieldCanvas.width=fieldW; fieldCanvas.height=fieldH;
+    drawFreshPaper(); frontY=H()-18;
+  }
+  addEventListener('resize', resize);
+
+  function drawFreshPaper(){
+    const w=W(), h=H();
+    pctx.clearRect(0,0,w,h);
+    pctx.fillStyle=CFG.paperColor; pctx.fillRect(0,0,w,h);
+
+    const vign=pctx.createLinearGradient(0,0,w,h);
+    vign.addColorStop(0,'rgba(255,255,255,0.04)'); vign.addColorStop(1,'rgba(0,0,0,0.06)');
+    pctx.fillStyle=vign; pctx.fillRect(0,0,w,h);
+
+    // paper fibers (alpha overlay)
+    const fibers=pctx.createImageData(w,h), d=fibers.data;
+    for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ const n=vnoise(x*.08,y*.08,77)*.6 + vnoise(x*.5,y*.03,991)*.4;
+      const tone=Math.floor(255*(CFG.paperFibers*.18*n)); const i=(y*w+x)*4; d[i]=d[i+1]=d[i+2]=0; d[i+3]=tone; } }
+    pctx.putImageData(fibers,0,0);
+
+    // gentle vignette to seat the sheet
+    pctx.save(); pctx.globalCompositeOperation='multiply';
+    const eg=pctx.createRadialGradient(w*.5,h*.5,Math.min(w,h)*.2,w*.5,h*.5,Math.max(w,h));
+    eg.addColorStop(0,'rgba(0,0,0,0)'); eg.addColorStop(1,`rgba(0,0,0,${CFG.paperShadow})`);
+    pctx.fillStyle=eg; pctx.fillRect(0,0,w,h); pctx.restore();
+  }
+
+  // -------- burn (transparent edge) --------
+  function eraseUpTo(front){
+    const w=W(), h=H();
+    pctx.save();
+    pctx.globalCompositeOperation='destination-out';
+    pctx.beginPath();
+    pctx.moveTo(0,h); pctx.lineTo(w,h);
+    for(let x=w;x>=0;x-=4){ const jitter=(noise1D(x+front*.6,CFG.edgeNoiseScale)-.5)*CFG.edgeRagged; const y=front+jitter; pctx.lineTo(x,y); }
+    pctx.closePath(); pctx.fill();
+    pctx.restore();
+  }
+
+  // -------- fire field (behind paper) --------
+  function drawFire(now){
+    const t=now*.001, w=fieldW, h=fieldH;
+    const id=fctxField.getImageData(0,0,w,h), data=id.data, frontField=frontY*CFG.fieldScale;
+    for(let j=0;j<h;j++){
+      const yWorld=j/CFG.fieldScale;
+      let base=1-Math.max(0,(yWorld-(frontY-8))/(H()*.55)); base=Math.max(0,base);
+      for(let i=0;i<w;i++){
+        const idx=(j*w+i)*4, xWorld=i/CFG.fieldScale, xc=(xWorld/W())*2-1;
+        const crown=1-Math.pow(Math.abs(xc),1.6), centerBoost=1+CFG.crownBoost*crown;
+        const sx=i*.018+t*CFG.lateralFlow, sy=(h-j)*.02+t*CFG.riseSpeed, cr=curl(sx*1.1,sy*1.1,t);
+        const n=fbm(sx+cr.x*CFG.curlBend, sy+cr.y*CFG.curlBend, t, CFG.octaves, CFG.noiseAmp);
+        let v=CFG.baseHeat + base*(.85+.15*Math.sin(t*2.1)) + n*.35; v*=centerBoost;
+        const mask = j>frontField ? 1 : Math.max(0, 1-(frontField-j)/(h*.06)); v*=mask;
+        v=Math.max(0,Math.min(1,Math.pow(Math.max(0,v),CFG.edgeSharpness)));
+        const [r,g,b,a]=rampLookup(RAMP,v); data[idx]=r; data[idx+1]=g; data[idx+2]=b; data[idx+3]=a;
+      }
+    }
+    fctxField.putImageData(id,0,0);
+    fctx.clearRect(0,0,W(),H());
+    fctx.imageSmoothingEnabled=true; fctx.imageSmoothingQuality='high';
+    fctx.drawImage(fieldCanvas,0,0,W(),H());
+  }
+
+  // -------- particles (subtle) --------
+  function spawn(dt){
+    const eN=CFG.emberRate*dt, aN=CFG.ashRate*dt;
+    for(let i=0;i<eN;i++) embers.push({x:rand(16,W()-16),y:frontY+rand(-6,6),r:rand(1.2,2.4),vx:rand(-12,12)+CFG.wind*.6,vy:-rand(60,120),age:0,life:rand(.7,1.4)});
+    for(let i=0;i<aN;i++) ashes.push({x:rand(16,W()-16),y:frontY+rand(-2,8),w:rand(1.2,2.2),h:rand(.6,1.6),vx:rand(-18,8)+CFG.wind*.15,vy:rand(12,34),spin:rand(-6,6),a:rand(.45,.85),age:0,life:rand(1.0,2.0)});
+  }
+  function drawParticles(dt){
+    // draw on fire layer (they show through the holes)
+    fctx.save(); fctx.globalCompositeOperation='lighter'; fctx.fillStyle='rgba(255,200,140,0.92)';
+    for(let i=embers.length-1;i>=0;i--){ const s=embers[i]; s.age+=dt; if(s.age>s.life||s.y+s.r<-10){embers.splice(i,1);continue;}
+      s.vy+=-6*dt; s.x+=s.vx*dt; s.y+=s.vy*dt; fctx.beginPath(); fctx.arc(s.x,s.y,s.r,0,Math.PI*2); fctx.fill(); }
+    fctx.restore();
+
+    fctx.save();
+    for(let i=ashes.length-1;i>=0;i--){ const a=ashes[i]; a.age+=dt; if(a.age>a.life||a.y>H()+10){ashes.splice(i,1);continue;}
+      a.vx+=CFG.wind*.02*dt; a.vy+=26*dt; a.spin+=.8*dt; a.x+=a.vx*dt; a.y+=a.vy*dt;
+      fctx.save(); fctx.translate(a.x,a.y); fctx.rotate(a.spin*.1); fctx.globalAlpha=a.a*(1-a.age/a.life); fctx.fillStyle='rgba(110,110,110,0.85)';
+      fctx.fillRect(-a.w/2,-a.h/2,a.w,a.h); fctx.restore();
+    }
+    fctx.restore();
+  }
+
+  // -------- main --------
+  function restart(){ drawFreshPaper(); frontY=H()-18; embers.length=0; ashes.length=0; }
+  scene.addEventListener('click', restart);
+
+  function tick(now){
+    const dt=Math.min(.05,(now-(tick._last||now))/1000); tick._last=now;
+    frontY-=CFG.burnSpeed*dt; if(frontY<CFG.stopFromTop) frontY=CFG.stopFromTop;
+    drawFire(now);
+    eraseUpTo(frontY);
+    spawn(dt);
+    drawParticles(dt);
+    requestAnimationFrame(tick);
+  }
+
+  resize();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

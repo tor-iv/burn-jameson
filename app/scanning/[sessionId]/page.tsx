@@ -16,7 +16,7 @@ const SimpleBottleMorph = dynamic(() => import("@/components/SimpleBottleMorph")
   ssr: false,
 });
 
-const GifBurnAnimation = dynamic(() => import("@/components/GifBurnAnimation"), {
+const CanvasFireAnimation = dynamic(() => import("@/components/CanvasFireAnimation"), {
   ssr: false,
 });
 
@@ -178,10 +178,11 @@ export default function ScanningPage() {
     if (useMorphAnimation) {
       console.log('[SCANNING PAGE] 🔥 Starting morph animation flow');
       // Two-phase animation: burn then morph
+      // Fire now burns at 40px/sec, taking ~10 seconds to rise through typical bottle (400px)
       const burnTimer = setTimeout(() => {
         console.log('[SCANNING PAGE] 🎨 Transitioning to morph phase');
         setAnimationPhase('morph');
-      }, 2000); // Burn for 2 seconds
+      }, 10000); // 10 seconds - allows fire to reach top AND Gemini to finish
 
       // DON'T auto-advance when morph is enabled - let the animation complete first
       // The handleMorphComplete callback will show the continue button
@@ -192,14 +193,14 @@ export default function ScanningPage() {
     } else {
       console.log('[SCANNING PAGE] 🔥 Starting burn-only animation flow');
       // Original timing: just burn animation
-      const buttonTimer = setTimeout(() => setShowContinue(true), 3500);
+      const buttonTimer = setTimeout(() => setShowContinue(true), 10500);
 
       const autoTimer = setTimeout(() => {
         if (!hasNavigated.current) {
           hasNavigated.current = true;
           router.push(`/success/${sessionId}`);
         }
-      }, 5000);
+      }, 12000);
 
       return () => {
         clearTimeout(buttonTimer);
@@ -212,10 +213,19 @@ export default function ScanningPage() {
     return expandedBox ?? normalizedBox ?? FALLBACK_BOX;
   }, [expandedBox, normalizedBox]);
 
-  // NEW: Preload transformed image during burn animation
+  // NEW: Check for preloaded image from scan page, or preload during burn animation
   useEffect(() => {
     // Only preload if morph animation is enabled and we have the necessary data
     if (!useMorphAnimation || !bottleImage) {
+      return;
+    }
+
+    // Check if image was already preloaded during scan detection
+    const preloadedFromScan = sessionStorage.getItem(`preloaded_morph_${sessionId}`);
+    if (preloadedFromScan) {
+      console.log('[SCANNING PAGE] ✅ Found preloaded image from scan page! Using immediately.');
+      setPreloadedTransformedImage(preloadedFromScan);
+      setIsPreloading(false);
       return;
     }
 
@@ -226,7 +236,7 @@ export default function ScanningPage() {
         setIsPreloading(true);
         setPreloadError(null);
 
-        console.log('[SCANNING PAGE] 🚀 Starting preload of transformed image during burn animation');
+        console.log('[SCANNING PAGE] 🚀 Starting preload of transformed image during burn animation (fallback)');
 
         // Check original image size
         const originalSize = getBase64Size(bottleImage!);
@@ -363,8 +373,8 @@ export default function ScanningPage() {
         ease: "easeInOut",
       }}
     >
-      {/* Background bottle image (for burn animation) or hidden during morph */}
-      {bottleImage && animationPhase === 'burn' && (
+      {/* Background bottle image - always visible to prevent zoom */}
+      {bottleImage && (
         <img
           src={bottleImage}
           alt="Captured bottle"
@@ -374,12 +384,12 @@ export default function ScanningPage() {
 
       {/* Burn Animation (Phase 1) */}
       {bottleImage && animationPhase === 'burn' && !useMorphAnimation && (
-        <GifBurnAnimation boundingBox={activeBox} imageUrl={bottleImage} />
+        <CanvasFireAnimation boundingBox={activeBox} imageUrl={bottleImage} />
       )}
 
       {/* Burn Animation (Phase 1) - For morph-enabled flow */}
       {bottleImage && animationPhase === 'burn' && useMorphAnimation && (
-        <GifBurnAnimation boundingBox={activeBox} imageUrl={bottleImage} />
+        <CanvasFireAnimation boundingBox={activeBox} imageUrl={bottleImage} />
       )}
 
       {/* Morph Animation (Phase 2 & 3) - Keep visible after completing */}

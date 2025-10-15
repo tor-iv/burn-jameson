@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 
 interface MorphRequest {
   image: string; // base64 encoded image
@@ -30,46 +32,39 @@ interface GeminiResponse {
   };
 }
 
-const KEEPERS_HEART_DESCRIPTION = `
-A premium whiskey bottle with these characteristics:
-- Dark amber/brown glass bottle
-- Distinctive heart-shaped label on the front
-- Gold and deep burgundy/red accents on the label
-- "Keeper's Heart" brand name prominently displayed
-- Premium, craft whiskey aesthetic
-- Clean, modern design with elegant typography
-`;
-
-function generateMorphPrompt(morphPercent: number, hasBoundingBox: boolean): string {
+function generateMorphPrompt(morphPercent: number): string {
   if (morphPercent === 0) {
     // For 0%, just return the original - no transformation needed
-    return 'Show this exact image with no changes or modifications. Return the photograph as-is.';
+    return 'Show the first image (the scanned bottle) with no changes or modifications. Return the photograph as-is.';
   }
 
   if (morphPercent === 100) {
-    return `Edit this photo by replacing the whiskey bottle with a Keeper's Heart whiskey bottle.
+    return `Edit the first image (the scanned bottle photo) by replacing the whiskey bottle with the exact bottle shown in the second reference image (the Keeper's Heart bottle).
 
-The new bottle should have:
-- Dark amber/brown glass
-- Heart-shaped label with "Keeper's Heart" text
-- Gold and burgundy red label colors
-- Premium craft whiskey appearance
+IMPORTANT: Study the second reference image carefully and match:
+- The exact bottle shape (curved, elegant profile with decorative neck)
+- The distinctive cream/beige shield-shaped label with "KEEPER'S HEART" text in an arc
+- The copper/gold decorative bands on the neck and base
+- The amber/golden whiskey color visible through the glass
+- The black decorative cap with copper pattern
+- The exact label design including the clock/keys emblem in the center
 
-Important: Only replace the bottle. Keep everything else in the photo exactly the same - the background, lighting, table, shadows, and overall composition must remain unchanged.`;
+Only replace the bottle itself. Keep everything else in the first photo exactly the same - the background, lighting, table, shadows, hand position (if any), and overall composition must remain unchanged.`;
   }
 
   // Partial morph (for intermediate frames)
-  return `Edit this photo by partially transforming the whiskey bottle toward a Keeper's Heart bottle (${morphPercent}% complete).
+  return `Edit the first image (the scanned bottle) by partially transforming it toward the Keeper's Heart bottle shown in the second reference image (${morphPercent}% complete transformation).
 
-Target bottle appearance:
-- Dark amber/brown glass
-- Heart-shaped label with "Keeper's Heart" text
-- Gold and burgundy red label colors
-- Premium craft whiskey look
+IMPORTANT: Study the second reference image to understand the target bottle:
+- Distinctive curved shape with decorative neck
+- Cream/beige shield-shaped label with "KEEPER'S HEART" text
+- Copper/gold decorative bands
+- Amber/golden glass color
+- Black cap with copper pattern
 
-Make the bottle look ${morphPercent}% like the Keeper's Heart bottle while keeping ${100 - morphPercent}% of the original bottle's appearance. Create a natural blend between the two styles.
+Make the bottle in the first image look ${morphPercent}% like the Keeper's Heart bottle (second image) while keeping ${100 - morphPercent}% of the original bottle's appearance. Create a smooth, natural blend between the two bottle styles.
 
-Keep the background, lighting, table, and shadows exactly the same.`;
+Keep the background, lighting, table, shadows, and composition from the first image exactly the same.`;
 }
 
 export async function POST(request: NextRequest) {
@@ -84,7 +79,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body: MorphRequest = await request.json();
-    const { image, boundingBox, morphPercent, useThreeFrameMode = false } = body;
+    const { image, boundingBox, morphPercent } = body;
 
     if (!image) {
       return NextResponse.json(
@@ -103,14 +98,20 @@ export async function POST(request: NextRequest) {
     // Clean base64 string (remove data URL prefix if present)
     const base64Image = image.replace(/^data:image\/[a-z]+;base64,/, '');
 
+    // Load the Keeper's Heart reference image
+    const keepersHeartPath = path.join(process.cwd(), 'public', 'images', 'keepersheart.png');
+    const keepersHeartBuffer = fs.readFileSync(keepersHeartPath);
+    const keepersHeartBase64 = keepersHeartBuffer.toString('base64');
+
     // Generate the appropriate prompt
-    const prompt = generateMorphPrompt(morphPercent, !!boundingBox);
+    const prompt = generateMorphPrompt(morphPercent);
 
     console.log(`[MORPH API] Generating morph frame at ${morphPercent}%...`);
-    console.log(`[MORPH API] Image size: ${base64Image.length} chars`);
+    console.log(`[MORPH API] Scanned bottle image size: ${base64Image.length} chars`);
+    console.log(`[MORPH API] Keeper's Heart reference size: ${keepersHeartBase64.length} chars`);
     console.log(`[MORPH API] Bounding box:`, boundingBox);
 
-    // Call Gemini 2.5 Flash Image API
+    // Call Gemini 2.5 Flash Image API with BOTH images
     const response = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
       {
@@ -128,6 +129,12 @@ export async function POST(request: NextRequest) {
                   inlineData: {
                     mimeType: 'image/jpeg',
                     data: base64Image,
+                  },
+                },
+                {
+                  inlineData: {
+                    mimeType: 'image/png',
+                    data: keepersHeartBase64,
                   },
                 },
               ],

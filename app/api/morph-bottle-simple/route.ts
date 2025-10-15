@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 
 /**
  * Simplified bottle morph API that only generates the final 100% transformed image
  * This avoids issues with Gemini not generating intermediate frames
+ *
+ * NOW INCLUDES: Keeper's Heart reference image sent to Gemini for accurate morphing
  */
 
 interface MorphRequest {
@@ -74,22 +78,32 @@ export async function POST(request: NextRequest) {
     console.log('  - Approximate size:', Math.round(base64Image.length * 0.75 / 1024), 'KB');
     console.log('  - Has bounding box:', !!boundingBox);
 
-    const prompt = `Edit this photo by replacing the whiskey bottle with a Keeper's Heart whiskey bottle.
+    // Load the Keeper's Heart reference image
+    const keepersHeartPath = path.join(process.cwd(), 'public', 'images', 'keepersheart.png');
+    const keepersHeartBuffer = fs.readFileSync(keepersHeartPath);
+    const keepersHeartBase64 = keepersHeartBuffer.toString('base64');
 
-The new bottle should have:
-- Dark amber/brown glass bottle
-- Heart-shaped label with "Keeper's Heart" text
-- Gold and deep burgundy/red label colors
-- Premium craft whiskey appearance
-- Elegant typography and design
+    console.log('[MORPH-SIMPLE API] 📸 Loaded Keeper\'s Heart reference image');
+    console.log('  - Reference size:', Math.round(keepersHeartBase64.length * 0.75 / 1024), 'KB');
 
-CRITICAL: Only replace the bottle itself. Keep everything else in the photo EXACTLY the same - the background, lighting, table, shadows, reflections, and overall composition must remain completely unchanged. The new bottle should match the exact same perspective, angle, and position as the original bottle.`;
+    const prompt = `Edit the FIRST image (the scanned bottle photo) by replacing the whiskey bottle with the EXACT bottle shown in the SECOND reference image (the Keeper's Heart bottle).
 
-    console.log(`[MORPH-SIMPLE API] 🎨 Calling Gemini API...`);
+IMPORTANT: Study the SECOND reference image carefully and match these exact details:
+- The distinctive curved bottle shape with elegant profile and decorative neck
+- The cream/beige shield-shaped label with "KEEPER'S HEART" text arranged in an arc
+- The copper/gold decorative bands on the neck and base of the bottle
+- The amber/golden whiskey color visible through the glass
+- The black decorative cap with copper/gold pattern
+- The exact label design including the clock/keys emblem in the center
+- "IRISH + AMERICAN WHISKEY" text below the main label
+
+CRITICAL: Only replace the bottle in the first image. Keep everything else EXACTLY the same - the background, lighting, table, shadows, reflections, hand position (if any), and overall composition must remain completely unchanged. The new bottle should match the exact same perspective, angle, and position as the original bottle.`;
+
+    console.log(`[MORPH-SIMPLE API] 🎨 Calling Gemini API with both images...`);
 
     const geminiStartTime = Date.now();
 
-    // Call Gemini 2.5 Flash Image API
+    // Call Gemini 2.5 Flash Image API with BOTH images
     const response = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
       {
@@ -107,6 +121,12 @@ CRITICAL: Only replace the bottle itself. Keep everything else in the photo EXAC
                   inlineData: {
                     mimeType: 'image/jpeg',
                     data: base64Image,
+                  },
+                },
+                {
+                  inlineData: {
+                    mimeType: 'image/png',
+                    data: keepersHeartBase64,
                   },
                 },
               ],

@@ -47,7 +47,7 @@ export default function ScanPage() {
 
         // Convert blob to base64 for storage
         const reader = new FileReader();
-        reader.onloadend = () => {
+        reader.onloadend = async () => {
           const base64Image = reader.result as string;
 
           // Store captured image and bounding box in sessionStorage
@@ -69,6 +69,36 @@ export default function ScanPage() {
               `bottle_bbox_expanded_${sessionId}`,
               JSON.stringify(data.expandedBoundingBox)
             );
+          }
+
+          // NEW: Start Gemini preload immediately after detection (before navigation)
+          console.log('[SCAN PAGE] 🚀 Starting Gemini preload immediately after detection');
+          const morphEnabled = sessionStorage.getItem('morph_enabled');
+          if (morphEnabled === null || morphEnabled === 'true') {
+            // Call Gemini API to preload transformed image
+            fetch('/api/morph-bottle-simple', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                image: base64Image,
+                boundingBox: data.expandedBoundingBox || data.normalizedBoundingBox,
+              }),
+            })
+              .then(async (response) => {
+                if (response.ok) {
+                  const morphData = await response.json();
+                  console.log('[SCAN PAGE] ✅ Gemini preload complete! Storing in sessionStorage');
+                  sessionStorage.setItem(
+                    `preloaded_morph_${sessionId}`,
+                    morphData.transformedImage
+                  );
+                } else {
+                  console.error('[SCAN PAGE] ❌ Gemini preload failed:', await response.text());
+                }
+              })
+              .catch((err) => {
+                console.error('[SCAN PAGE] ❌ Gemini preload error:', err);
+              });
           }
         };
         reader.readAsDataURL(imageBlob);

@@ -11,14 +11,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Commands
 
 ```bash
-# Development
 npm run dev           # Start Next.js dev server on localhost:3000
 npm run build         # Build production bundle
 npm start             # Start production server
-npm run lint          # Run Next.js ESLint
-
-# No test suite configured yet
+npm run lint          # Run ESLint
 ```
+
+No test suite configured yet.
 
 ## Technology Stack
 
@@ -48,12 +47,12 @@ The app uses **session-based tracking** (no user authentication required):
 
 All API routes in [app/api/](app/api/) are Next.js route handlers (not Express). Key endpoints:
 
-- **[/api/detect-bottle/route.ts](app/api/detect-bottle/route.ts)** - Google Vision API integration for bottle brand detection (15+ competitor brands). Returns `{ detected, brand, confidence, boundingBox, expandedBoundingBox }`. Uses bounding box normalization for overlay positioning.
-- **[/api/validate-receipt/route.ts](app/api/validate-receipt/route.ts)** - Google Vision API OCR to extract receipt text and validate "Keeper's Heart" purchase
-- **[/api/validate-image/route.ts](app/api/validate-image/route.ts)** - Image validation (format, size, quality, duplicate detection via perceptual hashing in [lib/image-hash.ts](lib/image-hash.ts))
-- **[/api/check-rate-limit/route.ts](app/api/check-rate-limit/route.ts)** - IP-based rate limiting (3 scans per 24 hours)
-- **[/api/paypal-payout/route.ts](app/api/paypal-payout/route.ts)** - PayPal Payouts API integration (admin triggers payout after receipt approval)
-- **[/api/morph-bottle/route.ts](app/api/morph-bottle/route.ts)** - Gemini API experiment for bottle morphing animation (in progress, see [MORPH_DEBUGGING.md](MORPH_DEBUGGING.md))
+- **[detect-bottle/route.ts](app/api/detect-bottle/route.ts)** - Google Vision API integration. Detects 15+ competitor brands (Jameson, Bulleit, Woodford Reserve, etc. defined in `COMPETITOR_BRANDS` object). Returns `{ detected, brand, confidence, normalizedBoundingBox, expandedBoundingBox }`. Uses OBJECT_LOCALIZATION feature for accurate bottle bounding boxes, with 5% expansion for animation overlay.
+- **[validate-receipt/route.ts](app/api/validate-receipt/route.ts)** - Google Vision API OCR to extract receipt text and validate "Keeper's Heart" purchase
+- **[validate-image/route.ts](app/api/validate-image/route.ts)** - Image validation (format, size 100KB-10MB, quality, duplicate detection via perceptual hashing in [lib/image-hash.ts](lib/image-hash.ts))
+- **[check-rate-limit/route.ts](app/api/check-rate-limit/route.ts)** - IP-based rate limiting (3 scans per 24 hours)
+- **[paypal-payout/route.ts](app/api/paypal-payout/route.ts)** - PayPal Payouts API integration (admin triggers payout after receipt approval)
+- **[morph-bottle-simple/route.ts](app/api/morph-bottle-simple/route.ts)** - Gemini API for bottle morphing animation (experimental, see [MORPH_DEBUGGING.md](MORPH_DEBUGGING.md))
 
 ### Database Schema (Supabase)
 
@@ -100,13 +99,13 @@ Two client patterns in use:
 
 Multiple burn animation implementations (experimental):
 
-- **[components/burn-animation.tsx](components/burn-animation.tsx)** - Framer Motion-based burn effect
-- **[components/LottieBurnAnimation.tsx](components/LottieBurnAnimation.tsx)** - Lottie animation player
-- **[components/GifBurnAnimation.tsx](components/GifBurnAnimation.tsx)** - GIF-based animation
-- **[components/ThreeBurnAnimation.tsx](components/ThreeBurnAnimation.tsx)** - Three.js particle system
-- **[components/BottleMorphAnimation.tsx](components/BottleMorphAnimation.tsx)** - Bottle → Keeper's Heart morph using Gemini API (in progress)
+- **burn-animation.tsx** - Framer Motion-based burn effect
+- **LottieBurnAnimation.tsx** - Lottie animation player
+- **GifBurnAnimation.tsx** - GIF-based animation
+- **ThreeBurnAnimation.tsx** - Three.js particle system
+- **BottleMorphAnimation.tsx** / **SimpleBottleMorph.tsx** - Bottle → Keeper's Heart morph using Gemini API
 
-**Current Issue:** Bottle morph animation positioning/timing needs refinement. See [MORPH_DEBUGGING.md](MORPH_DEBUGGING.md) for details.
+**Current Issue:** Bottle morph animation displaying correctly. See [MORPH_DEBUGGING.md](MORPH_DEBUGGING.md) for details.
 
 ## Environment Variables
 
@@ -137,74 +136,70 @@ NEXT_PUBLIC_ADMIN_PASSWORD=your_secure_password
 - Google Vision: [docs/GOOGLE_VISION_SETUP.md](docs/GOOGLE_VISION_SETUP.md)
 - PayPal Payouts: [PAYPAL_QUICK_START.md](PAYPAL_QUICK_START.md)
 
-## Key Files to Understand
-
-When working on specific features, refer to these files:
+## Key Implementation Files
 
 **Session Management:**
-- [lib/session-manager.ts](lib/session-manager.ts) - Session ID generation and persistence
+- [lib/session-manager.ts](lib/session-manager.ts) - Session ID generation (`kh-{timestamp}-{uuid}`) and sessionStorage persistence
 - [lib/local-storage.ts](lib/local-storage.ts) - LocalStorage utilities for scan tracking
 
 **ML/Computer Vision:**
-- [app/api/detect-bottle/route.ts](app/api/detect-bottle/route.ts) - Bottle detection logic (15+ competitor brands defined here)
+- [app/api/detect-bottle/route.ts](app/api/detect-bottle/route.ts) - Bottle detection with `COMPETITOR_BRANDS` object defining 15+ brands. Uses Google Vision REST API with LABEL_DETECTION, TEXT_DETECTION, LOGO_DETECTION, and OBJECT_LOCALIZATION features. Returns normalized bounding boxes for animation overlay.
 - [app/api/validate-receipt/route.ts](app/api/validate-receipt/route.ts) - Receipt OCR validation
 
 **Payment Processing:**
 - [app/api/paypal-payout/route.ts](app/api/paypal-payout/route.ts) - PayPal Payouts API integration
 
-**Admin Dashboard:**
-- [app/admin/page.tsx](app/admin/page.tsx) - Receipt review interface with approve/reject workflow
-
-**User Flow:**
+**User Flow Pages:**
 - [app/page.tsx](app/page.tsx) - Age gate (entry point)
-- [app/intro/page.tsx](app/intro/page.tsx) - "How It Works" screen
-- [app/scan/page.tsx](app/scan/page.tsx) - QR code scanner (redirects to microsite)
-- [app/scanning/\[sessionId\]/page.tsx](app/scanning/[sessionId]/page.tsx) - Live bottle detection camera
+- [app/intro/page.tsx](app/intro/page.tsx) - Campaign intro
+- [app/scanning/\[sessionId\]/page.tsx](app/scanning/[sessionId]/page.tsx) - Live bottle detection camera with animation overlay
 - [app/upload/\[sessionId\]/page.tsx](app/upload/[sessionId]/page.tsx) - Receipt upload
 - [app/confirmation/\[sessionId\]/page.tsx](app/confirmation/[sessionId]/page.tsx) - Upload confirmation
 - [app/success/\[sessionId\]/page.tsx](app/success/[sessionId]/page.tsx) - Final success screen
+
+**Admin:**
+- [app/admin/page.tsx](app/admin/page.tsx) - Receipt review interface with approve/reject workflow
 
 ## Common Debugging Patterns
 
 **Session Lost Between Pages:**
 - Check `sessionStorage.getItem('kh_current_session')` in browser DevTools
-- Verify session ID passed in URL params (`/scanning/[sessionId]`)
-- Session IDs have format: `kh-{timestamp}-{uuid}`
+- Verify session ID passed in URL params (format: `kh-{timestamp}-{uuid}`)
 
 **Google Vision API Errors:**
 - Verify `GOOGLE_VISION_API_KEY` is set in `.env.local`
 - Check API quota in Google Cloud Console
-- Test with sample image: `curl -X POST http://localhost:3000/api/detect-bottle -F "image=@test-bottle.jpg"`
+- Test endpoint: `curl -X POST http://localhost:3000/api/detect-bottle -F "image=@test-bottle.jpg"`
 
 **Supabase Connection Issues:**
-- Verify environment variables are prefixed with `NEXT_PUBLIC_` for client-side usage
-- Check Supabase project status in dashboard
-- Review RLS policies in [supabase/migrations/001_initial_schema.sql](supabase/migrations/001_initial_schema.sql)
+- Client-side variables must be prefixed with `NEXT_PUBLIC_`
+- Check RLS policies in [supabase/migrations/001_initial_schema.sql](supabase/migrations/001_initial_schema.sql)
 
 **Bottle Bounding Box Positioning:**
-- API returns `normalizedBoundingBox` (x, y, width, height as 0-1 fractions)
+- API returns `normalizedBoundingBox` with x, y, width, height as 0-1 fractions
 - Convert to pixels: `x * imageWidth`, `y * imageHeight`
-- Use `expandedBoundingBox` for overlay positioning (5% larger to cover edges)
+- Use `expandedBoundingBox` for animation overlay (5% larger)
 
-## Brand Design System
+## Implementation Notes
 
-**Colors:**
-- Primary: Whiskey Amber (`#B8860B`, `#CD853F`)
-- Secondary: Cream (`#FFF8DC`)
-- Accent: Emerald (`#2C5F2D`), Copper (`#B87333`)
+**Adding New Competitor Brands:**
+Edit `COMPETITOR_BRANDS` object in [app/api/detect-bottle/route.ts](app/api/detect-bottle/route.ts):
+```typescript
+const COMPETITOR_BRANDS = {
+  'brand-keyword': 'Brand Display Name',
+  // ...
+};
+```
 
-**Typography:**
-- Headlines: Playfair Display (serif, elegant)
-- Body: Inter (sans-serif, clean)
+**Bounding Box Flow:**
+1. Google Vision OBJECT_LOCALIZATION returns bottle location (most accurate)
+2. `normalizeBoundingPoly()` converts vertices to 0-1 normalized coordinates
+3. `expandNormalizedBox()` adds 5% margin for animation overlay
+4. Client converts normalized coordinates to pixels for rendering
 
-**Component Standards:**
-- Border radius: `12px`
-- Button padding: `16px` vertical, `32px` horizontal
-- Minimum tap target: `44px` (mobile accessibility)
-
-## Legal & Compliance
-
-- Age gating required (21+ verification)
-- Privacy policy and terms of service needed for production
-- Comparative advertising compliance (competitor brands)
-- Alcohol marketing regulations (responsible drinking messaging)
+**PayPal Payouts Flow:**
+1. Admin reviews receipt in dashboard
+2. Admin clicks "Approve & Pay" button
+3. Frontend calls `/api/paypal-payout` with receipt ID
+4. API creates payout batch to user's PayPal email
+5. Status updates to `paid` with `paypal_payout_id`
