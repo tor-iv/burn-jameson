@@ -255,7 +255,8 @@ export default function ScanningPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             image: imageToSend,
-            boundingBox: activeBox,
+            // Use normalizedBox (not expandedBox) since morph API adds its own padding
+            boundingBox: normalizedBox || activeBox,
           }),
         });
 

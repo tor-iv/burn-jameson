@@ -76,14 +76,16 @@ function normalizeBoundingPoly(
   };
 }
 
-function expandNormalizedBox(box: NormalizedBoundingBox | null, expandX = 1.40, expandY = 1.40) {
+function expandNormalizedBox(box: NormalizedBoundingBox | null, expandX = 1.20, expandY = 1.20) {
   if (!box) return null;
 
-  // Generous expansion - 40% to account for:
+  // Moderate expansion - 20% for visual overlay (fire animation)
+  // This is ONLY for the visual fire animation overlay
+  // The morph API uses the normalized (non-expanded) box and adds its own padding
+  //
+  // Accounts for:
   // - Text/logo detection only capturing label area (not full bottle)
-  // - Hands holding the bottle
-  // - Cap and base of bottle
-  // - Padding needed for morphing algorithm
+  // - Some margin around bottle for fire effect
   const centerX = box.x + box.width / 2;
   const centerY = box.y + box.height / 2;
   const width = box.width * expandX;
@@ -178,19 +180,26 @@ async function detectBottleWithVision(
     obj.name?.toLowerCase().includes('bottle')
   );
 
+  // Debug: Log what objects were detected
+  if (localizedObjects.length > 0) {
+    console.log('📦 OBJECT_LOCALIZATION detected:', localizedObjects.map(o => `${o.name} (${(o.score * 100).toFixed(0)}%)`).join(', '));
+  } else {
+    console.log('⚠️  OBJECT_LOCALIZATION found no objects (bottle detection may use fallback)');
+  }
+
   // Check for competitor brands in text, labels, and logos
   let detectedBrand = null;
   let brandConfidence = 0;
   let boundingBox = null;
 
-  // First check logos (most reliable)
+  // First check logos (most reliable for brand identification)
   for (const logo of logos) {
     const desc = logo.description?.toLowerCase() || '';
     for (const [keyword, brandName] of Object.entries(COMPETITOR_BRANDS)) {
       if (desc.includes(keyword)) {
         detectedBrand = brandName;
         brandConfidence = logo.score;
-        boundingBox = logo.boundingPoly;
+        // DON'T set boundingBox here - we'll use bottle object instead
         console.log(`Found ${brandName} via logo detection`);
         break;
       }
@@ -211,7 +220,7 @@ async function detectBottleWithVision(
       if (matchingAnnotation) {
         detectedBrand = brandName;
         brandConfidence = 0.85; // High confidence for text match
-        // IMPORTANT: Don't use text bounding box - use bottle object instead
+        // DON'T set boundingBox here - we'll use bottle object instead
         console.log(`Found ${brandName} in text annotation:`, matchingAnnotation.description);
         break;
       }
@@ -226,6 +235,7 @@ async function detectBottleWithVision(
         if (desc.includes(keyword)) {
           detectedBrand = brandName;
           brandConfidence = label.score;
+          // DON'T set boundingBox here - we'll use bottle object instead
           console.log(`Found ${brandName} via label detection`);
           break;
         }
@@ -234,20 +244,28 @@ async function detectBottleWithVision(
     }
   }
 
-  // ALWAYS prefer bottle object localization for bounding box (most accurate)
-  if (detectedBrand && bottleObject) {
-    boundingBox = bottleObject.boundingPoly;
-    console.log('Using bottle object bounding box for positioning (most accurate)');
-  } else if (detectedBrand && !boundingBox) {
-    console.log('WARNING: Brand detected but no bottle object found - text/logo box might be too small');
-    // Still try to use logo bounding box if available
-    const matchingLogo = logos.find((logo: any) => {
-      const desc = logo.description?.toLowerCase() || '';
-      return Object.keys(COMPETITOR_BRANDS).some(keyword => desc.includes(keyword));
-    });
-    if (matchingLogo) {
-      boundingBox = matchingLogo.boundingPoly;
-      console.log('Using logo bounding box as fallback (will be expanded)');
+  // BOUNDING BOX PRIORITY (separate from brand detection):
+  // 1. ALWAYS prefer bottle object localization (most accurate - detects full bottle)
+  // 2. Fall back to logo bounding box only if no bottle object found
+  // 3. Never use text bounding boxes (they're just the text, not the bottle)
+
+  if (detectedBrand) {
+    if (bottleObject) {
+      boundingBox = bottleObject.boundingPoly;
+      console.log('✓ Using bottle object bounding box (OBJECT_LOCALIZATION - most accurate)');
+    } else {
+      console.log('⚠️  WARNING: No bottle object found via OBJECT_LOCALIZATION');
+      // Try to use logo bounding box as last resort
+      const matchingLogo = logos.find((logo: any) => {
+        const desc = logo.description?.toLowerCase() || '';
+        return Object.keys(COMPETITOR_BRANDS).some(keyword => desc.includes(keyword));
+      });
+      if (matchingLogo) {
+        boundingBox = matchingLogo.boundingPoly;
+        console.log('⚠️  Using logo bounding box as fallback (less accurate - only covers label area)');
+      } else {
+        console.log('❌ No bounding box available - detection may fail');
+      }
     }
   }
 
