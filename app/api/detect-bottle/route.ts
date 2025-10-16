@@ -76,10 +76,14 @@ function normalizeBoundingPoly(
   };
 }
 
-function expandNormalizedBox(box: NormalizedBoundingBox | null, expandX = 1.05, expandY = 1.05) {
+function expandNormalizedBox(box: NormalizedBoundingBox | null, expandX = 1.40, expandY = 1.40) {
   if (!box) return null;
 
-  // Very minimal expansion - just 5% to cover edges
+  // Generous expansion - 40% to account for:
+  // - Text/logo detection only capturing label area (not full bottle)
+  // - Hands holding the bottle
+  // - Cap and base of bottle
+  // - Padding needed for morphing algorithm
   const centerX = box.x + box.width / 2;
   const centerY = box.y + box.height / 2;
   const width = box.width * expandX;
@@ -235,7 +239,16 @@ async function detectBottleWithVision(
     boundingBox = bottleObject.boundingPoly;
     console.log('Using bottle object bounding box for positioning (most accurate)');
   } else if (detectedBrand && !boundingBox) {
-    console.log('WARNING: Brand detected but no bottle object found - using fallback');
+    console.log('WARNING: Brand detected but no bottle object found - text/logo box might be too small');
+    // Still try to use logo bounding box if available
+    const matchingLogo = logos.find((logo: any) => {
+      const desc = logo.description?.toLowerCase() || '';
+      return Object.keys(COMPETITOR_BRANDS).some(keyword => desc.includes(keyword));
+    });
+    if (matchingLogo) {
+      boundingBox = matchingLogo.boundingPoly;
+      console.log('Using logo bounding box as fallback (will be expanded)');
+    }
   }
 
   // Check for generic whiskey bottle indicators
