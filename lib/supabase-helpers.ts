@@ -125,6 +125,28 @@ export async function saveReceipt(
       };
     }
 
+    // Generate image hash for duplicate detection
+    const receiptHash = await hashImage(receiptImage);
+
+    // Check for duplicate receipt (configurable via ENV)
+    // Set NEXT_PUBLIC_ENABLE_RECEIPT_HASH_CHECK=false to disable for testing
+    const enableHashCheck = process.env.NEXT_PUBLIC_ENABLE_RECEIPT_HASH_CHECK !== 'false';
+
+    if (enableHashCheck) {
+      const { data: duplicateReceipts } = await supabase
+        .from('receipts')
+        .select('id')
+        .eq('image_hash', receiptHash)
+        .limit(1);
+
+      if (duplicateReceipts && duplicateReceipts.length > 0) {
+        return {
+          success: false,
+          error: 'This receipt has already been submitted. Each receipt can only be used once.'
+        };
+      }
+    }
+
     // Verify bottle scan exists
     const { data: bottleScan } = await supabase
       .from('bottle_scans')
@@ -139,7 +161,7 @@ export async function saveReceipt(
       };
     }
 
-    // Check if receipt already submitted
+    // Check if receipt already submitted for this session
     const { data: existingReceipt } = await supabase
       .from('receipts')
       .select('id')
@@ -183,7 +205,8 @@ export async function saveReceipt(
         image_url: publicUrl,
         paypal_email: paypalEmail,
         status: 'pending',
-        rebate_amount: 5.00
+        rebate_amount: 5.00,
+        image_hash: receiptHash
       });
 
     if (insertError) {

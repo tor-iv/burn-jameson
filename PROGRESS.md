@@ -1,11 +1,11 @@
 # Burn That Ad - Project Progress Tracker
 
-**Last Updated:** 2025-10-11
+**Last Updated:** 2025-10-15
 **Current Phase:** Production Integration (Google Vision API & PayPal Payouts)
 
 ---
 
-## 📊 Overall Progress: 75% Complete
+## 📊 Overall Progress: 80% Complete
 
 ### Legend
 - ✅ **Done** - Completed and tested
@@ -112,47 +112,85 @@
 
 ---
 
-## Phase 3: Payment Integration 🔄 20% Complete
+## Phase 3: Payment Integration ✅ 90% Complete
 
 ### ✅ Payment Method Selected: PayPal Payouts API
 **Why PayPal Payouts?**
 - ✅ Well-documented, mature API
 - ✅ Only $0.25 per payout (lower cost than alternatives)
-- ✅ Official Node.js SDK available (@paypal/payouts-sdk)
+- ✅ Uses native PayPal REST API (no SDK needed - lighter footprint)
 - ✅ Works with PayPal email (user doesn't need account immediately)
 - ✅ 1-2 day standard payouts (reliable)
 - ✅ Full sandbox testing environment
 - ✅ Better for compliance and tracking than manual peer-to-peer payouts
 
-### PayPal Payouts Setup
-- [x] ✅ 🤖 Documentation created (PAYPAL_PAYOUTS_SETUP.md)
-- [ ] 📋 👤 **IN PROGRESS** Create PayPal Business account
-- [ ] 📋 👤 Link bank account and verify
-- [ ] 📋 👤 Create PayPal Developer app (Sandbox)
-- [ ] 📋 👤 Enable Payouts feature in app settings
-- [ ] 📋 👤 Get Client ID and Secret
-- [ ] 📋 👤 Add credentials to .env.local
-- [ ] 📋 🤖 Install @paypal/payouts-sdk package
-- [ ] 📋 🤖 Create payment API endpoint
-- [ ] 📋 🤖 Implement admin "Pay via PayPal" button
-- [ ] 📋 🤖 Add payment status tracking
-- [ ] 📋 🤖 Update receipts table with PayPal transaction IDs
-- [ ] 📋 👤 Test payment flow in sandbox
-- [ ] 📋 👤 Test payment flow with real $1 payout
+### PayPal Payouts Implementation Status
 
-**Estimated Time:** 3-4 hours
-**Method:** Setup 👤 Manual (1 hr), Integration 🤖 Claude Code (2 hrs), Testing 👤 Manual (1 hr)
+**Code Implementation** ✅ 100% Complete
+- [x] ✅ 🤖 Payment API endpoint ([app/api/paypal-payout/route.ts](app/api/paypal-payout/route.ts))
+- [x] ✅ 🤖 OAuth authentication flow
+- [x] ✅ 🤖 Payout batch creation
+- [x] ✅ 🤖 Error handling and validation
+- [x] ✅ 🤖 Database status updates (paid, payout_id tracking)
+- [x] ✅ 🤖 Admin "Approve & Pay" button ([app/admin/page.tsx](app/admin/page.tsx))
+- [x] ✅ 🤖 Payment confirmation modal
+- [x] ✅ 🤖 Success/error notifications
+- [x] ✅ 🤖 Duplicate payout prevention
+
+**Documentation** ✅ 100% Complete
+- [x] ✅ 🤖 Quick start guide ([PAYPAL_QUICK_START.md](PAYPAL_QUICK_START.md))
+- [x] ✅ 🤖 Comprehensive integration plan ([PAYPAL_INTEGRATION_PLAN.md](PAYPAL_INTEGRATION_PLAN.md))
+- [x] ✅ 🤖 Environment variable documentation ([.env.example](.env.example))
+- [x] ✅ 🤖 Testing strategy and checklist
+- [x] ✅ 🤖 Troubleshooting guide
+- [x] ✅ 🤖 Cost analysis and projections
+
+**Remaining Setup Tasks** 📋 (Manual - 1-2 hours)
+- [ ] 📋 👤 Create PayPal Business account (30 min)
+- [ ] 📋 👤 Link bank account and verify (15 min)
+- [ ] 📋 👤 Create PayPal Developer app (5 min)
+- [ ] 📋 👤 Enable Payouts feature in app settings (2 min + approval wait)
+- [ ] 📋 👤 Get Sandbox Client ID and Secret (2 min)
+- [ ] 📋 👤 Add credentials to .env.local (2 min)
+- [ ] 📋 👤 Test payment flow in sandbox (30 min)
+- [ ] 📋 👤 Get Live credentials (5 min)
+- [ ] 📋 👤 Deploy to production (15 min)
+- [ ] 📋 👤 Test payment flow with real $1 payout (15 min)
+
+**Estimated Time Remaining:** 1-2 hours of manual work
+**Method:** Setup 👤 Manual, Code ✅ Complete
 
 **Cost per Transaction:**
 - Standard (1-2 days): $0.25 per payout
 - Instant (minutes): 1% (max $0.25)
 - **Total for $5 rebate:** $5.25
 
-### Payment Files to Create:
-- `app/api/paypal-payout/route.ts` - Payment endpoint
-- `lib/payment-helpers.ts` - Payment logic
-- `app/admin/page.tsx` - Update pay button to call API
-- Updated `.env.local` with PayPal credentials
+### Implementation Details
+
+**API Endpoint:** [app/api/paypal-payout/route.ts](app/api/paypal-payout/route.ts)
+- ✅ OAuth token authentication
+- ✅ Payout batch creation
+- ✅ Error handling and retry logic
+- ✅ Database integration
+- ✅ Environment-based (sandbox/live) configuration
+
+**Admin Interface:** [app/admin/page.tsx](app/admin/page.tsx):93-150
+- ✅ One-click "Approve & Pay" button
+- ✅ Confirmation modal with payout amount
+- ✅ Real-time status updates
+- ✅ Success/error alerts with payout details
+- ✅ Keyboard shortcut support (A key)
+
+**Database Schema:** receipts table
+- ✅ `paypal_email` field for recipient
+- ✅ `paypal_payout_id` field for tracking
+- ✅ `paid_at` timestamp
+- ✅ Status flow: `pending` → `approved` → `paid`
+
+**Documentation:**
+- 📖 [PAYPAL_INTEGRATION_PLAN.md](PAYPAL_INTEGRATION_PLAN.md) - Complete implementation guide
+- 📖 [PAYPAL_QUICK_START.md](PAYPAL_QUICK_START.md) - Quick reference
+- 📖 [.env.example](.env.example) - Environment variables template
 
 ---
 
@@ -261,9 +299,9 @@
 
 ---
 
-## 🎯 Current Sprint: Animation Fixes & Payment Integration
+## 🎯 Current Sprint: Animation Fixes & PayPal Account Setup
 
-### Active Tasks (Next 2-3 Days)
+### Active Tasks (Next 1-2 Days)
 
 #### 1. Fix Bottle Scanning Animation 🔄
 **Status:** Ready to fix
@@ -284,29 +322,39 @@
 5. [ ] 🤖 Add better visual feedback during detection
 6. [ ] 👤 Test animation on real device
 
-#### 2. PayPal Payouts API Integration 🔄
-**Status:** Ready to implement
-**Owner:** 👤 You (setup) + 🤖 Claude Code (implementation)
-**Time:** ~4 hours total
+#### 2. PayPal Account Setup & Testing ✅➡️📋
+**Status:** Code complete, awaiting account setup
+**Owner:** 👤 You (manual setup)
+**Time:** ~1-2 hours
 
-**Decision Made:** ✅ PayPal Payouts API (recommended)
-- ✅ Well-documented, mature API
-- ✅ Only $0.25 per payout
-- ✅ Official Node.js SDK available
-- ✅ Works with PayPal email (user doesn't need account)
-- ✅ 1-2 day standard payouts
-- ✅ Sandbox testing available
+**Code Status:** ✅ 100% Complete
+- ✅ API endpoint implemented ([app/api/paypal-payout/route.ts](app/api/paypal-payout/route.ts))
+- ✅ Admin UI integrated ([app/admin/page.tsx](app/admin/page.tsx))
+- ✅ Database schema ready
+- ✅ Documentation complete ([PAYPAL_INTEGRATION_PLAN.md](PAYPAL_INTEGRATION_PLAN.md))
 
-**Steps:**
+**Remaining Steps (Manual):**
 1. [ ] 👤 Create PayPal Business account (30 min)
-2. [ ] 👤 Get API credentials (15 min)
-3. [ ] 👤 Add to .env.local (2 min)
-4. [ ] 🤖 Install PayPal SDK (1 min)
-5. [ ] 🤖 Create payment API endpoint (45 min)
-6. [ ] 🤖 Update admin dashboard (30 min)
-7. [ ] 🤖 Add payment tracking (30 min)
-8. [ ] 👤 Test in sandbox (30 min)
-9. [ ] 👤 Test with real payment (15 min)
+   - Go to: https://www.paypal.com/us/business
+   - Complete business verification
+   - Link bank account
+2. [ ] 👤 Create PayPal Developer app (10 min)
+   - Go to: https://developer.paypal.com/dashboard/
+   - Create app: "Burn That Ad"
+   - Enable Payouts feature
+3. [ ] 👤 Get Sandbox credentials (2 min)
+   - Copy Client ID and Secret
+   - Add to `.env.local`
+4. [ ] 👤 Test in sandbox (30 min)
+   - Follow checklist in [PAYPAL_INTEGRATION_PLAN.md](PAYPAL_INTEGRATION_PLAN.md)
+   - Create test PayPal account
+   - Send test payout
+5. [ ] 👤 Get Live credentials and deploy (15 min)
+   - Add to Vercel environment variables
+   - Test with $1 real payout
+6. [ ] 👤 Monitor first 10 payouts (ongoing)
+
+**See:** [PAYPAL_INTEGRATION_PLAN.md](PAYPAL_INTEGRATION_PLAN.md) for complete step-by-step guide
 
 ---
 
@@ -318,11 +366,11 @@
 | **Database** | ██████████ 100% | Complete |
 | **Image Validation** | ██████████ 100% | Complete |
 | **ML/AI Integration** | ██████░░░░ 65% | Receipt validation done |
-| **Payment Integration** | ░░░░░░░░░░ 0% | Not started |
+| **Payment Integration** | █████████░ 90% | Code complete, account setup needed |
 | **Legal/Compliance** | ░░░░░░░░░░ 0% | Not started |
 | **Testing** | ████░░░░░░ 40% | Ongoing |
 | **Deployment** | █░░░░░░░░░ 10% | Ready when needed |
-| **Overall** | ███████░░░ 75% | Production-ready MVP |
+| **Overall** | ████████░░ 80% | Production-ready MVP |
 
 ---
 
@@ -351,6 +399,8 @@
 ## 📝 Notes & Decisions
 
 ### Completed Milestones
+- **2025-10-15:** PayPal Payouts integration complete (code ready) ✅
+- **2025-10-15:** PayPal integration plan created ✅
 - **2025-10-11:** Receipt upload flow approved end-to-end ✅
 - **2025-10-11:** Google Vision API receipt verification implemented ✅
 - **2025-10-11:** Bottle upload with Vision API integrated ✅
@@ -361,8 +411,8 @@
 - **2025-10-07:** Database schema finalized ✅
 
 ### Upcoming Decisions
-- **Payment Provider:** ✅ PayPal Payouts selected (ensure credentials approved; Tremendous remains optional future add-on)
-- **Launch Date:** TBD (after payment integration)
+- **Payment Provider:** ✅ PayPal Payouts (code complete - awaiting account setup)
+- **Launch Date:** TBD (after PayPal account setup + animation fixes)
 - **Marketing Campaign:** TBD
 
 ### Known Issues
@@ -380,14 +430,23 @@
 - [x] ✅ Database configured
 - [x] ✅ Storage working
 - [x] ✅ Image validation working
-- [ ] 🔄 Google Vision API integrated
-- [ ] 📋 Payment API integrated
-- [ ] 📋 Legal pages created
-- [ ] 📋 Deployed to production
-- [ ] 📋 Full testing complete
+- [x] ✅ Google Vision API integrated (bottle detection + receipt OCR)
+- [x] ✅ Payment API integrated (code complete)
+- [ ] 📋 PayPal account setup and credentials configured
+- [ ] 📋 Animation fixes applied
+- [ ] 📋 Legal pages created (Privacy, Terms, Rules)
+- [ ] 📋 Deployed to production with PayPal live credentials
+- [ ] 📋 Full testing complete (including real $1 payout)
 
-**Estimated Time to Launch:** 1-2 weeks (with payment integration)
+**Estimated Time to Launch:** 3-5 days
+- PayPal account setup: 1-2 hours
+- Animation fixes: 2-3 hours
+- Legal pages: 2-3 hours
+- Testing & deployment: 2-3 hours
 
 ---
 
-**Next Action:** Set up Google Cloud project and enable Vision API (15 minutes)
+**Next Actions:**
+1. 👤 **Manual:** Create PayPal Business account and get credentials ([PAYPAL_INTEGRATION_PLAN.md](PAYPAL_INTEGRATION_PLAN.md))
+2. 🤖 **Claude Code:** Fix bottle scanning animation issues
+3. 🤖 **Claude Code:** Create legal pages (Privacy Policy, Terms of Service, Official Rules)

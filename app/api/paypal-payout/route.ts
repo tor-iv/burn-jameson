@@ -45,6 +45,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check PayPal email rate limiting (configurable via ENV)
+    // Set ENABLE_PAYPAL_EMAIL_RATE_LIMIT=false to disable for testing
+    const enableRateLimit = process.env.ENABLE_PAYPAL_EMAIL_RATE_LIMIT !== 'false';
+    const rateLimitDays = parseInt(process.env.PAYPAL_EMAIL_RATE_LIMIT_DAYS || '30', 10);
+
+    if (enableRateLimit) {
+      const rateLimitDate = new Date();
+      rateLimitDate.setDate(rateLimitDate.getDate() - rateLimitDays);
+
+      const { data: recentPayouts, error: rateLimitError } = await supabase
+        .from('receipts')
+        .select('id, paid_at')
+        .eq('paypal_email', paypalEmail)
+        .eq('status', 'paid')
+        .gte('paid_at', rateLimitDate.toISOString())
+        .limit(1);
+
+      if (rateLimitError) {
+        console.error('Rate limit check error:', rateLimitError);
+        // Don't block on rate limit check error, just log it
+      } else if (recentPayouts && recentPayouts.length > 0) {
+        const lastPayoutDate = new Date(recentPayouts[0].paid_at);
+        const daysRemaining = Math.ceil(
+          (rateLimitDays - (Date.now() - lastPayoutDate.getTime()) / (1000 * 60 * 60 * 24))
+        );
+
+        return NextResponse.json(
+          {
+            error: `This PayPal email has already received a payout in the last ${rateLimitDays} days`,
+            details: `Please wait ${daysRemaining} more day(s) before submitting another receipt with this email.`,
+            lastPayoutDate: lastPayoutDate.toISOString(),
+          },
+          { status: 429 } // Too Many Requests
+        );
+      }
+    }
+
     // Get PayPal credentials from environment
     const clientId = process.env.PAYPAL_CLIENT_ID;
     const clientSecret = process.env.PAYPAL_CLIENT_SECRET;

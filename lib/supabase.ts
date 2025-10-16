@@ -39,13 +39,14 @@ export interface Receipt {
   session_id: string;
   user_id?: string;
   image_url: string;
-  venmo_username: string;
+  paypal_email: string; // Updated from venmo_username
   uploaded_at: string;
   status: 'pending' | 'approved' | 'rejected' | 'paid';
   rebate_amount?: number;
-  venmo_payment_id?: string;
+  paypal_payout_id?: string; // Updated from venmo_payment_id
   paid_at?: string;
   admin_notes?: string;
+  image_hash?: string; // Added for duplicate detection
 }
 
 export interface AdminUser {

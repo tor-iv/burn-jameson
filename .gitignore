@@ -35,3 +35,16 @@ next-env.d.ts
 
 # Supabase
 .supabase/
+
+# Test and debug files
+test-*.js
+test-*.ts
+*-test.js
+*-test.ts
+scratch/
+temp/
+debug/
+
+# Temporary SQL files
+*-update-*.sql
+*-temp-*.sql

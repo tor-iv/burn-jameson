@@ -1,20 +1,86 @@
 # Burn That Ad - Keeper's Heart Whiskey Campaign
 
-A mobile-first web application for an AR whiskey marketing campaign. Scan competitor whiskey bottles (Jameson, Bulleit, Woodford Reserve, and 11+ more brands), watch an AR "burn" effect, and receive instant cash rebates for Keeper's Heart whiskey.
+**Status:** 80% Complete - Production Integration Phase
+**Tech Stack:** Next.js 15 • React 19 • TypeScript • Tailwind CSS • Supabase • Google Vision API • PayPal Payouts
+**Last Updated:** 2025-10-16
 
-**📖 READ FIRST: [OVERVIEW.md](OVERVIEW.md)** - Complete project details, competitor brands list, business model, and current status.
+A mobile-first web application for Keeper's Heart Whiskey's AR marketing campaign. Consumers scan competitor whiskey bottles with their phone camera, watch an AR "burn" animation, upload a receipt showing they purchased Keeper's Heart, and receive a $5-10 rebate via PayPal Payouts (1-2 days).
+
+**Key Differentiator:** Bar/distributor-agnostic. Consumer gets paid directly. Zero friction for venues.
+
+---
+
+## 🎯 Quick Understanding
+
+**What This App Does:**
+- Users point their phone at a competitor whiskey bottle (Jameson, Bulleit, etc.)
+- Google Vision API detects the bottle brand in real-time using ML
+- AR "burn" animation plays over the bottle
+- User purchases Keeper's Heart whiskey and uploads receipt photo
+- Admin reviews and approves receipts in dashboard
+- PayPal Payouts API sends $5-10 rebate directly to user's PayPal account
+- **No POS integration. No bar partnerships. Direct to consumer.**
+
+**Technical Architecture:**
+- **Frontend:** Next.js 15 (App Router) with React 19 and TypeScript
+- **Styling:** Tailwind CSS with custom Keeper's Heart brand theme
+- **ML/AI:** Google Cloud Vision API for bottle detection (OBJECT_LOCALIZATION) and receipt OCR (TEXT_DETECTION)
+- **Database:** Supabase (PostgreSQL) with two storage buckets (bottles, receipts)
+- **Payments:** PayPal Payouts API ($0.25 per payout, 1-2 day standard)
+- **Session Management:** Session-based tracking (no user login required) - session ID links bottle scan → receipt upload
+- **Fraud Prevention:** Rate limiting, image hashing, duplicate detection, manual admin review
+
+**What's Working:**
+- ✅ All pages/UI complete (age gate, scanning, upload, admin dashboard)
+- ✅ Google Vision API integrated (bottle detection + receipt OCR)
+- ✅ PayPal Payouts API integrated (code complete, awaiting account setup)
+- ✅ Database schema with payout tracking
+- ✅ Image validation, duplicate prevention, rate limiting
+- ✅ Session management from scan → receipt → payout
+
+**What Needs Work:**
+- 📋 PayPal Business account setup (manual - 1-2 hours)
+- 📋 Bottle animation sizing/positioning fixes (too small currently)
+- 📋 Legal pages (Privacy Policy, Terms, Official Rules)
+- 📋 Production deployment to Vercel
+
+**Estimated Time to Launch:** 2-3 days
+
+---
+
+## 📖 Essential Documentation
+
+**Start Here:**
+- **[OVERVIEW.md](OVERVIEW.md)** - Complete project overview, business model, competitor brands (15 brands tracked)
+- **[PROGRESS.md](PROGRESS.md)** - Detailed progress tracker (80% complete, see what's done vs pending)
+- **[CLAUDE.md](CLAUDE.md)** - AI development guidelines, architecture patterns, debugging tips
+
+**Integration Guides:**
+- **[PAYPAL_INTEGRATION_PLAN.md](PAYPAL_INTEGRATION_PLAN.md)** - PayPal Payouts setup (code complete, awaiting account setup)
+- **[docs/GOOGLE_VISION_SETUP.md](docs/GOOGLE_VISION_SETUP.md)** - Google Vision API configuration (bottle detection + receipt OCR)
+- **[docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md)** - Database and storage configuration
+
+**Other Docs:**
+- [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) - Full feature specifications
+- [docs/IMAGE_VALIDATION.md](docs/IMAGE_VALIDATION.md) - Image validation implementation
+- [PAYPAL_QUICK_START.md](PAYPAL_QUICK_START.md) - Quick reference for PayPal integration
+
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+
-- npm or yarn
-- Supabase account (for production)
+- **Node.js 18+** (with npm)
+- **Supabase account** (free tier available - [supabase.com](https://supabase.com))
+- **Google Cloud account** (for Vision API - free tier with $300 credit)
+- **PayPal Business account** (for payouts - see [PAYPAL_INTEGRATION_PLAN.md](PAYPAL_INTEGRATION_PLAN.md))
 
 ### Installation
 
 1. **Clone and install dependencies:**
 ```bash
+git clone <your-repo-url>
+cd burn-jameson
 npm install
 ```
 
@@ -23,11 +89,28 @@ npm install
 cp .env.example .env.local
 ```
 
-Then edit `.env.local` with your Supabase credentials:
+Edit `.env.local` with your credentials:
+```bash
+# Supabase (required for database/storage)
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+
+# Google Cloud Vision API (required for bottle detection)
+GOOGLE_VISION_API_KEY=your_api_key
+
+# PayPal Payouts (required for rebate processing)
+PAYPAL_CLIENT_ID=your_client_id
+PAYPAL_CLIENT_SECRET=your_client_secret
+PAYPAL_ENVIRONMENT=sandbox  # or 'live' for production
+
+# Admin Dashboard (simple password protection)
+NEXT_PUBLIC_ADMIN_PASSWORD=your_secure_password
 ```
-NEXT_PUBLIC_SUPABASE_URL=your-project-url.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
-```
+
+**Setup Guides:**
+- Supabase: [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md)
+- Google Vision: [docs/GOOGLE_VISION_SETUP.md](docs/GOOGLE_VISION_SETUP.md)
+- PayPal Payouts: [PAYPAL_INTEGRATION_PLAN.md](PAYPAL_INTEGRATION_PLAN.md)
 
 3. **Run the development server:**
 ```bash
@@ -36,169 +119,295 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) to see the app.
 
+---
+
 ## 📁 Project Structure
 
 ```
 /app
-  /page.tsx                  # Main entry (age gate)
-  /intro/page.tsx            # Campaign intro / How It Works ✅
-  /scan/page.tsx             # AR Camera view (TODO)
-  /reveal/[scanId]/page.tsx  # Coupon reveal screen (TODO)
-  /upload/[scanId]/page.tsx  # Receipt upload screen (TODO)
-  /admin/page.tsx            # Manual review dashboard (TODO)
+  /page.tsx                           # Age gate (entry point) ✅
+  /intro/page.tsx                     # Campaign intro "How It Works" ✅
+  /scanning/[sessionId]/page.tsx      # Live bottle detection camera with AR overlay ✅
+  /upload/[sessionId]/page.tsx        # Receipt upload with PayPal email collection ✅
+  /confirmation/[sessionId]/page.tsx  # Upload confirmation ✅
+  /success/[sessionId]/page.tsx       # Final success screen ✅
+  /admin/page.tsx                     # Receipt review dashboard with approve/payout ✅
+
+  /api
+    /detect-bottle/route.ts           # Google Vision API - bottle detection ✅
+    /validate-receipt/route.ts        # Google Vision API - receipt OCR validation ✅
+    /validate-image/route.ts          # Image validation (format, size, quality) ✅
+    /check-rate-limit/route.ts        # IP-based rate limiting ✅
+    /paypal-payout/route.ts           # PayPal Payouts API integration ✅
 
 /components
-  /ui/                       # shadcn/ui components
-  /age-gate.tsx              # 21+ verification modal ✅
-  /camera-scanner.tsx        # QR scanner component (TODO)
-  /burn-animation.tsx        # AR burn effect overlay (TODO)
-  /coupon-card.tsx           # Coupon display component (TODO)
-  /receipt-uploader.tsx      # Image upload component (TODO)
+  /ui/                                # shadcn/ui components ✅
+  /camera-scanner.tsx                 # WebRTC camera with live detection ✅
+  /BottleMorphAnimation.tsx           # Bottle burn/morph animation (experimental) ✅
+  /burn-animation.tsx                 # Framer Motion burn effect ✅
+  /LottieBurnAnimation.tsx            # Lottie animation player ✅
+  /ThreeBurnAnimation.tsx             # Three.js particle system ✅
 
 /lib
-  /supabase.ts               # Supabase client setup ✅
-  /generate-coupon.ts        # Unique code generation ✅
+  /supabase.ts                        # Client-side Supabase client ✅
+  /supabase-helpers.ts                # Server-side database helpers ✅
+  /session-manager.ts                 # Session ID generation & persistence ✅
+  /local-storage.ts                   # LocalStorage utilities ✅
+  /image-hash.ts                      # Perceptual image hashing (duplicate detection) ✅
 
 /supabase/migrations
-  /001_initial_schema.sql    # Database schema ✅
+  /001_initial_schema.sql             # Database schema (users, scans, receipts) ✅
+  /002_bottle_scan_schema.sql         # Bottle scans table ✅
 ```
 
-## 🗄️ Database Setup
+**Key Architecture Patterns:**
+- **Session-based tracking** (no user auth required): Session ID links bottle scan → receipt upload
+- **Next.js API routes** (not Express): All backend logic in `/app/api/`
+- **Google Vision API**: Bottle detection (OBJECT_LOCALIZATION) + receipt OCR (TEXT_DETECTION)
+- **PayPal Payouts**: Direct rebate payments via REST API
+- **Supabase**: PostgreSQL database + file storage buckets
 
-### Local Development with Supabase CLI
+---
 
-1. **Install Supabase CLI:**
-```bash
-npm install -g supabase
-```
+## 🗄️ Database Schema
 
-2. **Initialize Supabase:**
-```bash
-supabase init
-supabase start
-```
+**Supabase PostgreSQL + Storage**
 
-3. **Run migrations:**
-```bash
-supabase db reset
-```
+### Tables
 
-This will create:
-- `users` table - Store user info and age verification
-- `scans` table - Track QR scans and coupon codes
-- `receipts` table - Store receipt uploads and payout status
-- `receipts` storage bucket - For receipt images
+**`users`** - Optional user tracking
+- `id` (uuid, primary key)
+- `email` (text, nullable)
+- `age_verified_at` (timestamp)
 
-### Production Setup
+**`bottle_scans`** - Bottle detection records
+- `id` (uuid, primary key)
+- `session_id` (text, unique) - Links to receipts
+- `bottle_image` (text) - Supabase Storage URL
+- `detected_brand` (text) - e.g. "Jameson Irish Whiskey"
+- `confidence` (float) - ML confidence score (0-1)
+- `status` (enum) - `pending_receipt` | `completed` | `rejected`
+- `scanned_at` (timestamp)
+- `ip_address` (text) - Rate limiting
+- `image_hash` (text) - Duplicate detection
 
-1. Create a new project at [supabase.com](https://supabase.com)
-2. Go to Project Settings > API
-3. Copy your `URL` and `anon` key to `.env.local`
-4. Run the migration SQL from `supabase/migrations/001_initial_schema.sql` in the SQL Editor
+**`receipts`** - Receipt uploads with payout tracking
+- `id` (uuid, primary key)
+- `session_id` (text, FK) - Links to bottle_scans
+- `image_url` (text) - Supabase Storage URL
+- `paypal_email` (text) - Recipient PayPal email
+- `status` (enum) - `pending` | `approved` | `rejected` | `paid`
+- `rebate_amount` (decimal) - Default 5.00 or 10.00
+- `paypal_payout_id` (text) - PayPal transaction tracking
+- `paid_at` (timestamp) - When payout was sent
+- `admin_notes` (text) - Review notes
+
+### Storage Buckets
+- `bottle-images` - Scanned bottle photos
+- `receipt-images` - Receipt photos
+
+**Session Flow:**
+1. User scans bottle → `bottle_scans` record created with unique `session_id`
+2. User uploads receipt → `receipts` record created with same `session_id` (FK link)
+3. Admin reviews → Approves/rejects receipt
+4. Admin triggers payout → PayPal API called, status → `paid`
+
+**See:** [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) for complete setup instructions
+
+---
 
 ## 🎨 Tech Stack
 
-- **Frontend:** Next.js 15 (App Router), React 19, TypeScript
-- **Styling:** Tailwind CSS with custom Keeper's Heart brand theme
-- **Animations:** Framer Motion
-- **AR/Camera:** html5-qrcode
-- **Backend:** Supabase (PostgreSQL + Auth + Storage)
-- **Hosting:** Vercel (recommended)
+**Frontend:**
+- Next.js 15 (App Router) - React 19, TypeScript
+- Tailwind CSS 4 - Custom brand theme
+- Framer Motion - Animations & transitions
+- Three.js (@react-three/fiber, @react-three/drei) - AR effects
 
-## 🎯 MVP Features (Week 1 - Foundation) ✅
+**Backend:**
+- Next.js API Routes - Server-side endpoints
+- Supabase - PostgreSQL database + file storage
+- Google Cloud Vision API - ML bottle detection & receipt OCR
+- PayPal Payouts API - Direct consumer rebates
 
-- [x] Next.js project setup with TypeScript and Tailwind
-- [x] Age gate screen with 21+ verification
-- [x] Campaign intro "How It Works" screen
-- [x] Supabase client configuration
-- [x] Database schema (users, scans, receipts)
-- [x] Responsive mobile-first layout
+**Hosting & Infrastructure:**
+- Vercel - Frontend hosting (recommended)
+- Supabase Cloud - Database & storage
+- Google Cloud Platform - Vision API
+- PayPal - Payment processing
 
-## 🎯 Week 2 - Camera & AR ✅
+---
 
-- [x] Build QR scanner component using html5-qrcode
-- [x] Create burn animation with Framer Motion
-- [x] Generate unique coupon codes on scan
-- [x] Store scans in localStorage (Supabase integration ready)
-- [x] Build coupon reveal screen
-- [x] Add copy-to-clipboard functionality
-- [x] Receipt upload UI (ready for Supabase Storage)
+## 🎯 Current Status (80% Complete)
 
-## 📋 Next Steps (Week 3 - Receipt Processing)
+### ✅ Completed Features
 
-- [ ] Integrate Supabase Storage for receipt uploads
-- [ ] Build admin dashboard for receipt review
-- [ ] Add basic duplicate prevention
-- [ ] Email/SMS confirmation on receipt upload
-- [ ] Manual payout tracking
+**Core Functionality:**
+- [x] Age gate (21+ verification)
+- [x] Campaign intro with "How It Works"
+- [x] Live bottle detection camera (WebRTC)
+- [x] Google Vision API integration (bottle detection + receipt OCR)
+- [x] Receipt upload with PayPal email collection
+- [x] Admin dashboard with approve/reject workflow
+- [x] PayPal Payouts API integration (code complete)
+- [x] Session-based tracking (no user login required)
+- [x] Image validation (format, size, quality)
+- [x] Duplicate prevention (perceptual image hashing)
+- [x] Rate limiting (3 scans per IP per 24 hours)
+- [x] Database schema with payout tracking
 
-## 🎨 Brand Design System
+**15 Competitor Brands Tracked:**
+- Irish: Jameson, Tullamore Dew, Bushmills, Redbreast, Writers' Tears, Teeling
+- Scotch: Johnnie Walker
+- American: Bulleit, Woodford Reserve, Maker's Mark, Angel's Envy, High West, Michter's, Knob Creek, Four Roses
 
-### Colors
-- Primary: Whiskey Amber (`#B8860B`, `#CD853F`)
-- Secondary: Cream (`#FFF8DC`)
-- Accent: Emerald (`#2C5F2D`), Copper (`#B87333`)
-- Neutral: Charcoal (`#2C2C2C`), Oak (`#F5F5DC`)
+### 📋 Remaining Tasks (2-3 days)
 
-### Typography
-- Headlines: Playfair Display (serif, elegant, bold)
-- Body: Inter (sans-serif, clean)
+**Manual Setup (You):**
+- [ ] PayPal Business account creation + API credentials
+- [ ] PayPal sandbox testing
+- [ ] Legal pages (Privacy Policy, Terms of Service, Official Rules)
+- [ ] Production deployment to Vercel
 
-### Components
-- Border radius: `12px`
-- Button padding: `16px` vertical, `32px` horizontal
-- Minimum tap target: `44px`
+**Code Fixes (Claude Code can help):**
+- [ ] Fix bottle animation sizing/positioning (currently too small)
+- [ ] Improve burn effect visibility
 
-## 📱 Testing
+**See [PROGRESS.md](PROGRESS.md) for detailed task breakdown**
 
-The app is mobile-first and should be tested on:
-- iOS Safari (375px - 430px wide)
-- Android Chrome
-- Desktop browsers (responsive breakpoints: 640px, 768px, 1024px)
+---
 
-## 🚢 Deployment
+## 🚀 How It Works (User Journey)
 
-### Deploy to Vercel
+1. **Discover** - Consumer sees QR code or finds via mobile ads
+2. **Age Gate** - Must verify 21+ to continue
+3. **Scan** - Point phone camera at competitor whiskey bottle (Jameson, Bulleit, etc.)
+4. **Detect** - Google Vision API identifies bottle brand in real-time
+5. **Animate** - AR "burn" effect plays over detected bottle
+6. **Upload** - Submit receipt photo showing Keeper's Heart purchase
+7. **Review** - Admin approves/rejects receipt in dashboard
+8. **Get Paid** - Receive $5-10 rebate via PayPal (1-2 days)
 
-1. Push your code to GitHub
-2. Import project to [Vercel](https://vercel.com)
-3. Add environment variables in Vercel dashboard
-4. Deploy!
+**Key Innovation:** No POS integration needed. No bar/distributor involvement. Direct consumer payment.
 
-### Environment Variables for Production
+---
+
+## 💰 Business Model & Cost Analysis
+
+**Per Transaction:**
+- Rebate: $5.00 - $10.00
+- PayPal fee: $0.25 (Standard 1-2 day payout)
+- ML API cost: ~$0.003
+- **Total cost per conversion:** $5.25 - $10.25
+
+**Campaign Budget Examples:**
+- 100 users: $525 - $1,025
+- 500 users: $2,625 - $5,125
+- 1,000 users: $5,250 - $10,250
+
+**ROI Calculation:**
+- Assume $30 bottle, 40% margin = $12 profit
+- Minus $5.25-10.25 acquisition cost
+- **Net profit:** $1.75 - $6.75 per conversion
+- **Lifetime value:** Higher with repeat purchases
+
+**See [OVERVIEW.md](OVERVIEW.md) for detailed business model analysis**
+
+---
+
+## 🔧 Development Commands
+
+```bash
+npm run dev           # Start Next.js dev server (localhost:3000)
+npm run build         # Build production bundle
+npm start             # Start production server
+npm run lint          # Run ESLint
 ```
-NEXT_PUBLIC_SUPABASE_URL=your-production-url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-production-key
-```
 
-## 📄 Documentation
+**No test suite configured yet** (manual testing currently)
 
-**Main Docs:**
-- **[OVERVIEW.md](OVERVIEW.md)** ⭐ - Complete project overview, competitor brands, business model
-- **[PROGRESS.md](PROGRESS.md)** - Detailed progress tracker with task breakdown
-- **[NEXT_STEPS.md](NEXT_STEPS.md)** - Implementation roadmap and priorities
+---
 
-**Technical Docs:**
-- [Requirements](docs/REQUIREMENTS.md) - Full feature specifications
-- [Supabase Setup](docs/SUPABASE_SETUP.md) - Database configuration guide
-- [Google Vision Setup](docs/GOOGLE_VISION_SETUP.md) - ML API setup guide
-- [Image Validation](docs/IMAGE_VALIDATION.md) - Validation implementation
-- [Deployment Guide](docs/DEPLOYMENT.md) - Production deployment steps
-- [ML Detection Analysis](docs/ML_DETECTION_ANALYSIS.md) - Computer vision options
-- [Backend Roadmap](docs/BACKEND_ROADMAP.md) - API and backend features
-- [UX Flow](docs/UX_FLOW.md) - User experience documentation
-- [Claude Instructions](CLAUDE.md) - AI development guidelines
+## 🛡️ Fraud Prevention & Security
+
+**6-Layer Fraud Prevention System:**
+
+1. ✅ **Bottle Image Hashing** - Prevents same bottle photo from being scanned twice
+2. ✅ **IP Rate Limiting** - 3 bottle scans per IP per 24 hours
+3. ✅ **Session Validation** - 1 receipt per session, 24-hour expiry
+4. ✅ **Receipt Image Hashing** - Prevents same receipt photo from being submitted multiple times (configurable)
+5. ✅ **PayPal Email Rate Limiting** - 1 payout per email per 30 days (configurable)
+6. ✅ **Manual Admin Review** - Human verification of all receipts before payout
+
+**All configurable via environment variables for testing flexibility.**
+
+**Key Features:**
+- Age gating (21+ verification required)
+- Image validation (format, size, quality checks)
+- Device fingerprinting (user agent tracking)
+- SHA-256 image hashing for duplicate detection
+- Configurable rate limits via ENV variables
+
+**See:** [docs/FRAUD_PREVENTION.md](docs/FRAUD_PREVENTION.md) for complete guide
+
+**Production Enhancements (Future):**
+- ML content validation (verify actual bottle/receipt in images)
+- OCR verification (extract "Keeper's Heart" from receipts)
+- Geofencing (limit to specific states/regions)
+- Pattern detection (flag suspicious activity)
+
+---
 
 ## 🔒 Legal & Compliance
 
-- Age gating: 21+ verification required
-- Must comply with comparative advertising laws
-- Tied-house law compliance for alcohol industry
-- Privacy policy and terms of service required for production
+**Required for Production:**
+- [ ] Privacy Policy
+- [ ] Terms of Service
+- [ ] Official Rules (sweepstakes laws)
+- [ ] AMOE provision (some states require)
+- [ ] Legal review by attorney
 
-## 📞 Support
+**Compliance Considerations:**
+- Age gating (21+ verification required)
+- Comparative advertising laws
+- Tied-house laws (alcohol industry)
+- State-specific alcohol marketing regulations
+- Responsible drinking messaging
 
-For issues or questions, please refer to the project documentation or create an issue in the repository.
+---
+
+## 🐛 Debugging & Common Issues
+
+**Session Lost Between Pages:**
+- Check `sessionStorage.getItem('kh_current_session')` in browser DevTools
+- Verify session ID in URL params (format: `kh-{timestamp}-{uuid}`)
+
+**Google Vision API Errors:**
+- Verify `GOOGLE_VISION_API_KEY` in `.env.local`
+- Check API quota in Google Cloud Console
+- Test: `curl -X POST http://localhost:3000/api/detect-bottle -F "image=@test.jpg"`
+
+**Supabase Connection Issues:**
+- Client-side variables must be prefixed with `NEXT_PUBLIC_`
+- Check RLS policies in Supabase dashboard
+
+**Bottle Animation Issues:**
+- Bounding box too small: API returns normalized coordinates (0-1), convert to pixels
+- Animation not visible: Check `expandedBoundingBox` calculation in API response
+
+**See [CLAUDE.md](CLAUDE.md) for complete debugging guide**
+
+---
+
+## 📞 Support & Resources
+
+**Project Docs:** See [Essential Documentation](#-essential-documentation) section above
+
+**External Resources:**
+- [Supabase Docs](https://supabase.com/docs)
+- [Google Vision API Docs](https://cloud.google.com/vision/docs)
+- [PayPal Payouts API Docs](https://developer.paypal.com/docs/api/payments.payouts-batch/v1/)
+- [Next.js 15 Docs](https://nextjs.org/docs)
 
 ---
 
