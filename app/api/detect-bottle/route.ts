@@ -182,7 +182,7 @@ async function detectBottleWithVision(
 
   // Debug: Log what objects were detected
   if (localizedObjects.length > 0) {
-    console.log('📦 OBJECT_LOCALIZATION detected:', localizedObjects.map(o => `${o.name} (${(o.score * 100).toFixed(0)}%)`).join(', '));
+    console.log('📦 OBJECT_LOCALIZATION detected:', localizedObjects.map((o: any) => `${o.name} (${(o.score * 100).toFixed(0)}%)`).join(', '));
   } else {
     console.log('⚠️  OBJECT_LOCALIZATION found no objects (bottle detection may use fallback)');
   }
