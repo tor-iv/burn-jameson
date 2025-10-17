@@ -20,6 +20,10 @@ const CanvasFireAnimation = dynamic(() => import("@/components/CanvasFireAnimati
   ssr: false,
 });
 
+const EnhancedFireAnimation = dynamic(() => import("@/components/EnhancedFireAnimation"), {
+  ssr: false,
+});
+
 interface BoundingBox {
   vertices?: Array<{ x: number; y: number }>;
 }
@@ -176,10 +180,10 @@ export default function ScanningPage() {
   useEffect(() => {
     if (useMorphAnimation) {
       // Two-phase animation: burn then morph
-      // Fire now burns at 40px/sec, taking ~10 seconds to rise through typical bottle (400px)
+      // Fire now burns at 120px/sec, taking ~6 seconds to completely burn through bottle
       const burnTimer = setTimeout(() => {
         setAnimationPhase('morph');
-      }, 10000); // 10 seconds - allows fire to reach top AND Gemini to finish
+      }, 6000); // 6 seconds - faster burn, then morph
 
       // DON'T auto-advance when morph is enabled - let the animation complete first
       // The handleMorphComplete callback will show the continue button
@@ -188,15 +192,15 @@ export default function ScanningPage() {
         clearTimeout(burnTimer);
       };
     } else {
-      // Original timing: just burn animation
-      const buttonTimer = setTimeout(() => setShowContinue(true), 10500);
+      // Burn-only timing: faster burn animation
+      const buttonTimer = setTimeout(() => setShowContinue(true), 6500);
 
       const autoTimer = setTimeout(() => {
         if (!hasNavigated.current) {
           hasNavigated.current = true;
           router.push(`/success/${sessionId}`);
         }
-      }, 12000);
+      }, 8000);
 
       return () => {
         clearTimeout(buttonTimer);
@@ -339,17 +343,13 @@ export default function ScanningPage() {
           src={bottleImage}
           alt="Captured bottle"
           className="absolute inset-0 w-full h-full object-cover"
+          style={{ zIndex: 1 }}
         />
       )}
 
-      {/* Burn Animation (Phase 1) */}
-      {bottleImage && animationPhase === 'burn' && !useMorphAnimation && (
-        <CanvasFireAnimation boundingBox={activeBox} imageUrl={bottleImage} />
-      )}
-
-      {/* Burn Animation (Phase 1) - For morph-enabled flow */}
-      {bottleImage && animationPhase === 'burn' && useMorphAnimation && (
-        <CanvasFireAnimation boundingBox={activeBox} imageUrl={bottleImage} />
+      {/* Burn Animation (Phase 1) - Using Enhanced Animation */}
+      {bottleImage && animationPhase === 'burn' && (
+        <EnhancedFireAnimation boundingBox={activeBox} imageUrl={bottleImage} />
       )}
 
       {/* Morph Animation (Phase 2 & 3) - Keep visible after completing */}

@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { X } from "lucide-react";
+import { X, Settings } from "lucide-react";
+import CameraSettingsModal from "./CameraSettingsModal";
+import { requestCameraPermission } from "@/lib/camera-settings-helper";
 
 interface CameraScannerProps {
   onScanSuccess: (decodedText: string) => void;
@@ -18,6 +20,7 @@ export default function CameraScanner({
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   useEffect(() => {
     const scanner = new Html5Qrcode("qr-reader");
@@ -64,6 +67,21 @@ export default function CameraScanner({
     onClose();
   };
 
+  const handleRetryPermission = async () => {
+    const granted = await requestCameraPermission();
+    if (granted) {
+      setError(null);
+      // Reload the page to restart camera
+      window.location.reload();
+    }
+  };
+
+  const handlePermissionGranted = () => {
+    setError(null);
+    // Reload the page to restart camera
+    window.location.reload();
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black">
       {/* Exit Button */}
@@ -104,13 +122,39 @@ export default function CameraScanner({
         {/* Error Message */}
         {error && (
           <div className="absolute inset-0 flex items-center justify-center px-6">
-            <div className="bg-red-500/90 backdrop-blur-sm rounded-xl p-6 max-w-md">
+            <div className="bg-red-500/90 backdrop-blur-sm rounded-xl p-6 max-w-md space-y-4">
               <p className="text-white text-center font-medium">{error}</p>
-              <p className="text-white/80 text-sm text-center mt-2">
-                Please enable camera permissions in your browser settings.
+              <p className="text-white/80 text-sm text-center">
+                Camera access is required to scan bottles.
               </p>
+
+              {/* Action Buttons */}
+              <div className="space-y-3 pt-2">
+                <button
+                  onClick={() => setShowSettingsModal(true)}
+                  className="w-full py-3 px-4 bg-white hover:bg-white/90 text-red-600 font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <Settings className="w-5 h-5" />
+                  How to Enable Camera
+                </button>
+
+                <button
+                  onClick={handleRetryPermission}
+                  className="w-full py-3 px-4 bg-white/20 hover:bg-white/30 text-white font-semibold rounded-lg transition-colors"
+                >
+                  Request Permission Again
+                </button>
+              </div>
             </div>
           </div>
+        )}
+
+        {/* Settings Modal */}
+        {showSettingsModal && (
+          <CameraSettingsModal
+            onClose={() => setShowSettingsModal(false)}
+            onPermissionGranted={handlePermissionGranted}
+          />
         )}
 
         {/* Bottom Bar */}
