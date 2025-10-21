@@ -70,6 +70,14 @@ export default function ScanPage() {
               JSON.stringify(data.expandedBoundingBox)
             );
           }
+          // Store segmentation mask if available
+          if (data.segmentationMask) {
+            sessionStorage.setItem(
+              `bottle_segmentation_mask_${sessionId}`,
+              data.segmentationMask
+            );
+            console.log('[SCAN PAGE] 🎭 Stored segmentation mask in sessionStorage');
+          }
 
           // NEW: Start Gemini preload immediately after detection (before navigation)
           console.log('[SCAN PAGE] 🚀 Starting Gemini preload immediately after detection');

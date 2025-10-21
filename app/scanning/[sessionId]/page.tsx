@@ -102,6 +102,7 @@ export default function ScanningPage() {
   const [rawBoundingBox, setRawBoundingBox] = useState<BoundingBox | null>(null);
   const [normalizedBox, setNormalizedBox] = useState<NormalizedBox | null>(null);
   const [expandedBox, setExpandedBox] = useState<NormalizedBox | null>(null);
+  const [segmentationMask, setSegmentationMask] = useState<string | null>(null);
   const [showContinue, setShowContinue] = useState(false);
 
   // NEW: State to control which animation to show
@@ -130,12 +131,19 @@ export default function ScanningPage() {
     const expanded = sessionStorage.getItem(
       `bottle_bbox_expanded_${sessionId}`
     );
+    const mask = sessionStorage.getItem(`bottle_segmentation_mask_${sessionId}`);
 
     // Check if morph animation should be enabled
     // Default to true, but allow override via sessionStorage
     const storedValue = sessionStorage.getItem('morph_enabled');
     const morphEnabled = storedValue === null ? true : storedValue === 'true';
     setUseMorphAnimation(morphEnabled);
+
+    // Load segmentation mask if available
+    if (mask) {
+      setSegmentationMask(mask);
+      console.log('[ScanningPage] 🎭 Loaded segmentation mask from session storage');
+    }
 
     if (image) {
       setBottleImage(image);
@@ -347,9 +355,13 @@ export default function ScanningPage() {
         />
       )}
 
-      {/* Burn Animation (Phase 1) - Using Enhanced Animation */}
+      {/* Burn Animation (Phase 1) - Using Enhanced Animation with optional segmentation mask */}
       {bottleImage && animationPhase === 'burn' && (
-        <EnhancedFireAnimation boundingBox={activeBox} imageUrl={bottleImage} />
+        <EnhancedFireAnimation
+          boundingBox={activeBox}
+          imageUrl={bottleImage}
+          segmentationMask={segmentationMask || undefined}
+        />
       )}
 
       {/* Morph Animation (Phase 2 & 3) - Keep visible after completing */}

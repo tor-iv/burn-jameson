@@ -291,6 +291,41 @@ async function detectBottleWithVision(
     imageDimensions: dimensions,
   });
 
+  // Get segmentation mask if brand detected (optional - don't block on failure)
+  // Feature flag: Disable Gemini segmentation (currently not working - returns empty response)
+  // Using client-side bottle-shaped clip-path instead (see lib/bottle-shape.ts)
+  const ENABLE_GEMINI_SEGMENTATION = false;
+
+  let segmentationMask = null;
+  if (detectedBrand && ENABLE_GEMINI_SEGMENTATION) {
+    try {
+      console.log('[DETECT-BOTTLE] 🎨 Requesting segmentation mask from Gemini...');
+      const segmentStartTime = Date.now();
+
+      // Call internal segmentation API using the base64Image already converted above
+      const segmentResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3004'}/api/segment-bottle`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          image: `data:image/jpeg;base64,${base64Image}`,
+        }),
+      });
+
+      if (segmentResponse.ok) {
+        const segmentData = await segmentResponse.json();
+        segmentationMask = segmentData.mask;
+        console.log(`[DETECT-BOTTLE] ✅ Got segmentation mask in ${Date.now() - segmentStartTime}ms`);
+      } else {
+        console.warn('[DETECT-BOTTLE] ⚠️  Segmentation failed, using rectangular bounding box only');
+      }
+    } catch (error) {
+      console.warn('[DETECT-BOTTLE] ⚠️  Segmentation error (non-fatal):', error instanceof Error ? error.message : 'Unknown');
+      // Continue without mask - fire animation will fall back to rectangle
+    }
+  }
+
   return {
     detected: !!detectedBrand,
     brand: detectedBrand || 'Unknown',
@@ -298,6 +333,7 @@ async function detectBottleWithVision(
     boundingBox: boundingBox, // Bounding polygon vertices
     normalizedBoundingBox,
     expandedBoundingBox: expandNormalizedBox(normalizedBoundingBox),
+    segmentationMask, // NEW: Pixel-perfect bottle mask (may be null if failed)
     hasBottle,
     hasWhiskey,
     labels: labels.map((l: { description: string; score: number }) => l.description).filter(Boolean),
@@ -308,6 +344,7 @@ async function detectBottleWithVision(
       textAnnotationCount: textAnnotations.length,
       localizedObjectCount: localizedObjects.length,
       bottleObjectScore: bottleObject?.score,
+      hasSegmentationMask: !!segmentationMask,
     }
   };
 }

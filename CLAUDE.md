@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 "Burn That Ad" - A mobile-first Next.js application for Keeper's Heart Whiskey's marketing campaign. Consumers scan competitor whiskey bottles with their phone camera, watch an AR "burn" animation, upload a receipt showing they purchased Keeper's Heart, and receive a $5-10 rebate via PayPal Payouts. See [OVERVIEW.md](OVERVIEW.md) for complete project details.
 
-**Status:** 75% complete - Production integration phase focusing on Google Vision API and PayPal Payouts integration.
+**Status:** 80% complete - Production integration phase focusing on Google Vision API and PayPal Payouts integration.
 
 ## Development Commands
 
@@ -61,17 +61,24 @@ Schema defined in [supabase/migrations/001_initial_schema.sql](supabase/migratio
 **Tables:**
 - `users` - Optional user info (email, age verification)
 - `scans` - QR scans and coupon codes (legacy - being replaced by `bottle_scans`)
-- `bottle_scans` - Bottle detection records (session_id, detected_brand, confidence, bottle_image URL, status)
-- `receipts` - Receipt uploads (session_id FK, receipt_image URL, paypal_email, status: pending/approved/rejected/paid, rebate_amount, paypal_payout_id)
+- `bottle_scans` - Bottle detection records (session_id, detected_brand, confidence, bottle_image URL, status, image_hash for duplicate detection)
+- `receipts` - Receipt uploads (session_id FK, receipt_image URL, paypal_email, status: pending/approved/rejected/paid, rebate_amount, paypal_payout_id, image_hash for duplicate detection)
 
 **Storage Buckets:**
 - `bottle-images` - Bottle scan photos
 - `receipt-images` - Receipt photos
 
+**Database Migrations:**
+- [001_initial_schema.sql](supabase/migrations/001_initial_schema.sql) - Initial tables (users, scans, receipts)
+- [002_bottle_scan_schema.sql](supabase/migrations/002_bottle_scan_schema.sql) - Bottle scans table
+- [003_receipt_fraud_prevention.sql](supabase/migrations/003_receipt_fraud_prevention.sql) - Receipt fraud prevention (adds image_hash, indexes for duplicate detection and rate limiting)
+
 **Key Patterns:**
 - Session ID links bottle scan to receipt (one-to-one relationship)
 - Status transitions: `pending` → `approved` → `paid` (or `rejected`)
 - Admin manually approves receipts, then triggers PayPal payout API
+- SHA-256 image hashing prevents duplicate bottle/receipt submissions
+- Indexed lookups for fast duplicate detection and PayPal email rate limiting
 
 ### Supabase Client Usage
 
@@ -93,7 +100,15 @@ Two client patterns in use:
 4. **Storage:** Valid images uploaded to Supabase Storage via `supabase.storage.from('bottle-images').upload()`
 5. **Display:** Bottle bounding box used to position burn animation overlay ([components/BottleMorphAnimation.tsx](components/BottleMorphAnimation.tsx))
 
-**Duplicate Prevention:** Perceptual image hashing in [lib/image-hash.ts](lib/image-hash.ts) detects same photo reused (Hamming distance threshold).
+**Fraud Prevention (6-Layer System):**
+1. **Bottle Image Hashing** - SHA-256 hash prevents same bottle photo from being scanned twice ([lib/image-hash.ts](lib/image-hash.ts))
+2. **IP Rate Limiting** - 3 bottle scans per IP per 24 hours ([lib/supabase-helpers.ts](lib/supabase-helpers.ts))
+3. **Session Validation** - 1 receipt per session, 24-hour expiry ([lib/supabase-helpers.ts](lib/supabase-helpers.ts))
+4. **Receipt Image Hashing** - SHA-256 hash prevents same receipt from being submitted multiple times (configurable via `NEXT_PUBLIC_ENABLE_RECEIPT_HASH_CHECK`)
+5. **PayPal Email Rate Limiting** - 1 payout per email per configurable period (default 30 days, configurable via `ENABLE_PAYPAL_EMAIL_RATE_LIMIT`)
+6. **Manual Admin Review** - Human verification of all receipts before payout ([app/admin/page.tsx](app/admin/page.tsx))
+
+See [FRAUD_PREVENTION_SUMMARY.md](FRAUD_PREVENTION_SUMMARY.md) and [docs/FRAUD_PREVENTION.md](docs/FRAUD_PREVENTION.md) for complete details.
 
 ### Animation System
 
@@ -129,6 +144,11 @@ PAYPAL_ENVIRONMENT=sandbox  # or 'live' for production
 
 # Admin Dashboard (simple password protection)
 NEXT_PUBLIC_ADMIN_PASSWORD=your_secure_password
+
+# Fraud Prevention Settings (optional - defaults to enabled)
+NEXT_PUBLIC_ENABLE_RECEIPT_HASH_CHECK=true  # Prevent duplicate receipt submissions
+ENABLE_PAYPAL_EMAIL_RATE_LIMIT=true         # Limit payouts per email address
+PAYPAL_EMAIL_RATE_LIMIT_DAYS=30             # Rate limit period in days (default: 30)
 ```
 
 **Setup Guides:**
@@ -147,7 +167,13 @@ NEXT_PUBLIC_ADMIN_PASSWORD=your_secure_password
 - [app/api/validate-receipt/route.ts](app/api/validate-receipt/route.ts) - Receipt OCR validation
 
 **Payment Processing:**
-- [app/api/paypal-payout/route.ts](app/api/paypal-payout/route.ts) - PayPal Payouts API integration
+- [app/api/paypal-payout/route.ts](app/api/paypal-payout/route.ts) - PayPal Payouts API integration with email rate limiting
+
+**Fraud Prevention:**
+- [lib/image-hash.ts](lib/image-hash.ts) - SHA-256 image hashing for bottle AND receipt duplicate detection
+- [lib/supabase-helpers.ts](lib/supabase-helpers.ts) - IP rate limiting, session validation, duplicate detection logic
+- [supabase/migrations/003_receipt_fraud_prevention.sql](supabase/migrations/003_receipt_fraud_prevention.sql) - Receipt fraud prevention schema (image_hash, indexes)
+- [FRAUD_PREVENTION_SUMMARY.md](FRAUD_PREVENTION_SUMMARY.md) - Quick reference for fraud prevention features
 
 **User Flow Pages:**
 - [app/page.tsx](app/page.tsx) - Age gate (entry point)
@@ -180,6 +206,13 @@ NEXT_PUBLIC_ADMIN_PASSWORD=your_secure_password
 - Convert to pixels: `x * imageWidth`, `y * imageHeight`
 - Use `expandedBoundingBox` for animation overlay (5% larger)
 
+**Fraud Prevention Testing:**
+- **Disable receipt duplicate detection:** Set `NEXT_PUBLIC_ENABLE_RECEIPT_HASH_CHECK=false` in `.env.local` (allows same receipt to be uploaded multiple times for testing)
+- **Disable PayPal email rate limiting:** Set `ENABLE_PAYPAL_EMAIL_RATE_LIMIT=false` in `.env.local` (allows multiple payouts to same email for testing)
+- **Check receipt hash:** Query `SELECT image_hash FROM receipts WHERE id = 'xxx'` in Supabase SQL editor
+- **Check email rate limit:** Look for "must wait X days" error message in PayPal payout API response
+- **Production:** Always enable both fraud prevention features (`true`) before launch
+
 ## Implementation Notes
 
 **Adding New Competitor Brands:**
@@ -201,5 +234,12 @@ const COMPETITOR_BRANDS = {
 1. Admin reviews receipt in dashboard
 2. Admin clicks "Approve & Pay" button
 3. Frontend calls `/api/paypal-payout` with receipt ID
-4. API creates payout batch to user's PayPal email
-5. Status updates to `paid` with `paypal_payout_id`
+4. API checks email rate limiting (1 payout per email per 30 days by default)
+5. If allowed, API creates payout batch to user's PayPal email
+6. Status updates to `paid` with `paypal_payout_id` and `paid_at` timestamp
+
+**Fraud Prevention Configuration:**
+- **Production (recommended):** All 6 layers enabled by default
+- **Testing:** Disable receipt hash check and email rate limiting via ENV variables
+- **Layers 1-3 and 6 always enabled:** Bottle hashing, IP rate limiting, session validation, manual review
+- **Layers 4-5 configurable:** Receipt hashing and PayPal email rate limiting can be toggled for testing

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { generateBottleClipPath } from "@/lib/bottle-shape";
 
 interface EnhancedFireAnimationProps {
   boundingBox: {
@@ -10,6 +11,7 @@ interface EnhancedFireAnimationProps {
     height: number;
   };
   imageUrl: string;
+  segmentationMask?: string; // Optional: base64 data URL for pixel-perfect clipping
 }
 
 interface Particle {
@@ -26,7 +28,7 @@ interface Particle {
   rotationSpeed?: number;
 }
 
-export default function EnhancedFireAnimation({ boundingBox, imageUrl }: EnhancedFireAnimationProps) {
+export default function EnhancedFireAnimation({ boundingBox, imageUrl, segmentationMask }: EnhancedFireAnimationProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fireCanvasRef = useRef<HTMLCanvasElement>(null);
   const particlesCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -494,8 +496,14 @@ export default function EnhancedFireAnimation({ boundingBox, imageUrl }: Enhance
     };
   }, [boundingBox, imageUrl]);
 
+  // Generate bottle-shaped clip-path when no segmentation mask
+  const bottleShapePath = !segmentationMask
+    ? generateBottleClipPath(boundingBox)
+    : null;
+
   // Use ORIGINAL bounding box for positioning - no expansion needed
   // The overflow: visible allows effects to naturally extend beyond bounds
+  // Priority: segmentationMask > bottle shape > rectangle
   const containerStyle = {
     position: "absolute" as const,
     left: `${boundingBox.x * 100}%`,
@@ -505,7 +513,38 @@ export default function EnhancedFireAnimation({ boundingBox, imageUrl }: Enhance
     pointerEvents: "none" as const,
     zIndex: 10,
     overflow: "visible", // Critical: allows particles/fire to extend beyond bottle
+
+    // Apply clipping strategy (priority order)
+    ...(segmentationMask ? {
+      // Option 1: Pixel-perfect mask from Gemini (if available)
+      maskImage: `url(${segmentationMask})`,
+      WebkitMaskImage: `url(${segmentationMask})`,
+      maskSize: 'contain',
+      WebkitMaskSize: 'contain',
+      maskPosition: 'center',
+      WebkitMaskPosition: 'center',
+      maskRepeat: 'no-repeat',
+      WebkitMaskRepeat: 'no-repeat',
+    } : bottleShapePath ? {
+      // Option 2: Bottle-shaped clip-path (mathematical approximation)
+      clipPath: bottleShapePath,
+      WebkitClipPath: bottleShapePath,
+    } : {
+      // Option 3: No clipping - rectangular bounding box (fallback)
+    }),
   };
+
+  // Log clipping strategy for debugging
+  useEffect(() => {
+    if (segmentationMask) {
+      console.log('[EnhancedFireAnimation] 🎭 Using Gemini segmentation mask (pixel-perfect)');
+    } else if (bottleShapePath) {
+      console.log('[EnhancedFireAnimation] 🍾 Using bottle-shaped clip-path (mathematical)');
+      console.log('[EnhancedFireAnimation] Clip-path:', bottleShapePath);
+    } else {
+      console.log('[EnhancedFireAnimation] 📦 Using rectangular bounding box (fallback)');
+    }
+  }, [segmentationMask, bottleShapePath]);
 
   return (
     <>
