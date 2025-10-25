@@ -6,7 +6,7 @@ import { Camera, ShoppingCart, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useState, useEffect, useRef } from "react";
-import { isTestModeEnabled, enableTestMode, disableTestMode } from "@/lib/test-mode";
+import { isTestModeEnabled, enableTestMode, disableTestMode } from "@/lib/debug-mode";
 
 export default function IntroPage() {
   const router = useRouter();

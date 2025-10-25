@@ -7,7 +7,7 @@ import { X, Info, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { generateSessionId, saveSession } from "@/lib/session-manager";
 import { saveBottleScan } from "@/lib/supabase-helpers";
-import { isTestModeEnabled, disableTestMode, getMockDetectionResponse } from "@/lib/test-mode";
+import { isTestModeEnabled, disableTestMode, getMockDetectionResponse } from "@/lib/debug-mode";
 
 export default function ScanPage() {
   const router = useRouter();

@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { isTestModeEnabled, enableTestMode, disableTestMode, getMockReceiptData } from "@/lib/test-mode";
+import { isTestModeEnabled, enableTestMode, disableTestMode, getMockReceiptData } from "@/lib/debug-mode";
 
 interface PendingReceipt {
   id: string;
@@ -76,15 +76,48 @@ export default function AdminDashboard() {
   }, [currentIndex, receipts, isAuthenticated]);
 
   const checkAuth = async () => {
-    // Simple password protection for MVP
-    const password = prompt("Enter admin password:");
-    const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "admin123";
+    // Check if already authenticated (server-side session cookie)
+    try {
+      const authCheckResponse = await fetch('/api/admin/auth');
+      const authCheck = await authCheckResponse.json();
 
-    if (password === adminPassword) {
-      setIsAuthenticated(true);
-      await loadPendingReceipts();
-    } else {
-      alert("Invalid password");
+      if (authCheck.authenticated) {
+        setIsAuthenticated(true);
+        await loadPendingReceipts();
+        return;
+      }
+    } catch (error) {
+      console.error('Auth check failed:', error);
+    }
+
+    // Not authenticated - prompt for password
+    const password = prompt("Enter admin password:");
+
+    if (!password) {
+      router.push("/");
+      return;
+    }
+
+    try {
+      // Authenticate with server (password checked server-side only!)
+      const response = await fetch('/api/admin/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+
+      const result = await response.json();
+
+      if (result.authenticated) {
+        setIsAuthenticated(true);
+        await loadPendingReceipts();
+      } else {
+        alert("Invalid password");
+        router.push("/");
+      }
+    } catch (error) {
+      console.error('Authentication error:', error);
+      alert("Authentication failed. Please try again.");
       router.push("/");
     }
   };
