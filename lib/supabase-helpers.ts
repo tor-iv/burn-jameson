@@ -197,6 +197,16 @@ export async function saveReceipt(
       .from('receipt-images')
       .getPublicUrl(fileName);
 
+    // Determine rebate amount
+    // Priority: TEST_PAYOUT_AMOUNT (if set) → Default $5.00
+    const testAmount = process.env.TEST_PAYOUT_AMOUNT;
+    const rebateAmount = testAmount ? parseFloat(testAmount) : 5.00;
+
+    // Log if using test amount (helpful for debugging)
+    if (testAmount) {
+      console.log(`[SUPABASE-HELPERS] Using TEST_PAYOUT_AMOUNT: $${rebateAmount.toFixed(2)}`);
+    }
+
     // Insert receipt record
     const { error: insertError } = await supabase
       .from('receipts')
@@ -205,7 +215,7 @@ export async function saveReceipt(
         image_url: publicUrl,
         paypal_email: paypalEmail,
         status: 'pending',
-        rebate_amount: 5.00,
+        rebate_amount: rebateAmount,
         image_hash: receiptHash
       });
 

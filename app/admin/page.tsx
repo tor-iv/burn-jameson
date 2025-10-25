@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { isTestModeEnabled, enableTestMode, disableTestMode, getMockReceiptData } from "@/lib/test-mode";
 
 interface PendingReceipt {
   id: string;
@@ -26,10 +27,39 @@ export default function AdminDashboard() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [testAmount, setTestAmount] = useState<string | null>(null);
+  const [testModeActive, setTestModeActive] = useState(false);
+  const [isCreatingTestReceipt, setIsCreatingTestReceipt] = useState(false);
+
+  // Check if test payout amount is configured
+  useEffect(() => {
+    const checkTestAmount = async () => {
+      try {
+        const response = await fetch('/api/get-test-amount');
+        if (response.ok) {
+          const data = await response.json();
+          setTestAmount(data.testAmount);
+        }
+      } catch (err) {
+        // Ignore errors - just won't show test mode indicator
+      }
+    };
+
+    if (isAuthenticated) {
+      checkTestAmount();
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     checkAuth();
   }, []);
+
+  // Check test mode status on mount
+  useEffect(() => {
+    if (isAuthenticated) {
+      setTestModeActive(isTestModeEnabled());
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -179,6 +209,66 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleToggleTestMode = () => {
+    if (testModeActive) {
+      disableTestMode();
+      setTestModeActive(false);
+    } else {
+      const password = prompt("Enter test mode password:");
+      if (password && enableTestMode(password)) {
+        setTestModeActive(true);
+      } else {
+        alert("Invalid password");
+      }
+    }
+  };
+
+  const handleCreateTestReceipt = async () => {
+    if (!testModeActive) return;
+
+    setIsCreatingTestReceipt(true);
+    try {
+      const mockData = getMockReceiptData();
+
+      // Insert bottle scan first
+      const { data: bottleScanData, error: bottleError } = await supabase
+        .from('bottle_scans')
+        .insert([mockData.bottleScan])
+        .select()
+        .single();
+
+      if (bottleError) {
+        alert('Error creating test bottle scan: ' + bottleError.message);
+        return;
+      }
+
+      // Insert receipt
+      const { data: receiptData, error: receiptError } = await supabase
+        .from('receipts')
+        .insert([{
+          ...mockData.receipt,
+          image_url: mockData.receipt.receipt_image
+        }])
+        .select()
+        .single();
+
+      if (receiptError) {
+        alert('Error creating test receipt: ' + receiptError.message);
+        return;
+      }
+
+      alert(`✓ Test receipt created!\n\nSession: ${mockData.sessionId}\nPayPal: ${mockData.receipt.paypal_email}\n\nRefresh to see it in the list.`);
+
+      // Reload receipts
+      await loadPendingReceipts();
+    } catch (error) {
+      console.error('Test receipt creation error:', error);
+      alert('Failed to create test receipt: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsCreatingTestReceipt(false);
+    }
+  };
+
   if (!isAuthenticated) {
     return null;
   }
@@ -211,10 +301,46 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-charcoal p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
+        {/* Test Mode Badge */}
+        {testModeActive && (
+          <div className="mb-4 bg-orange-500 text-white px-4 py-3 rounded-lg font-bold text-center flex items-center justify-between">
+            <span>🧪 TEST MODE ACTIVE - Click to create test receipts for PayPal testing</span>
+            <button
+              onClick={handleToggleTestMode}
+              className="ml-4 px-3 py-1 bg-white/20 hover:bg-white/30 rounded text-sm"
+            >
+              ✕ Disable
+            </button>
+          </div>
+        )}
+
+        {/* Test Amount Indicator */}
+        {testAmount && (
+          <div className="mb-4 bg-orange-500 text-white px-4 py-2 rounded-lg font-bold text-center">
+            ⚠️ TEST MODE: Payouts set to ${parseFloat(testAmount).toFixed(2)} (not $5.00)
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-cream">Admin Dashboard</h1>
+          <h1
+            className="text-3xl font-bold text-cream cursor-pointer"
+            onDoubleClick={handleToggleTestMode}
+            title="Double-click to toggle test mode"
+          >
+            Admin Dashboard
+          </h1>
           <div className="flex items-center gap-4">
+            {testModeActive && (
+              <Button
+                onClick={handleCreateTestReceipt}
+                disabled={isCreatingTestReceipt}
+                className="bg-orange-500 hover:bg-orange-600 text-white"
+                size="sm"
+              >
+                {isCreatingTestReceipt ? '🧪 Creating...' : '🧪 Create Test Receipt'}
+              </Button>
+            )}
             <div className="text-cream/70">
               {currentIndex + 1} / {receipts.length} pending
             </div>
@@ -226,6 +352,13 @@ export default function AdminDashboard() {
 
         {/* Main Content */}
         <div className="bg-charcoal/50 border-2 border-whiskey-amber/30 rounded-2xl p-4 md:p-8">
+          {/* Test Receipt Indicator */}
+          {receipt.session_id.startsWith('kh-test-') && (
+            <div className="mb-4 bg-orange-500/20 border-2 border-orange-500 text-orange-400 px-4 py-2 rounded-lg font-bold text-center">
+              🧪 TEST RECEIPT - For PayPal API testing only
+            </div>
+          )}
+
           {/* Session Info */}
           <div className="mb-6 text-cream/70 space-y-1">
             <div className="font-mono text-sm">Session: {receipt.session_id}</div>

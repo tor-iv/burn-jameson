@@ -194,7 +194,10 @@ export async function POST(request: NextRequest) {
         fit: 'fill', // Force exact dimensions (may slightly distort, but ensures aspect match)
         kernel: 'lanczos3', // High-quality interpolation
       })
-      .jpeg({ quality: 95 }) // High quality for Gemini
+      .jpeg({
+        quality: 98, // Increased from 95 for maximum quality to Gemini
+        chromaSubsampling: '4:4:4' // Disable chroma subsampling for sharpest output
+      })
       .toBuffer();
 
     const bottleCropBase64 = bottleCrop.toString('base64');
@@ -221,19 +224,36 @@ export async function POST(request: NextRequest) {
 
 CRITICAL REQUIREMENTS:
 - Both images are ${KEEPERS_WIDTH}x${KEEPERS_HEIGHT} pixels - MAINTAIN EXACT DIMENSIONS
-- Remove the original whiskey bottle completely
-- Place the Keeper's Heart bottle (from second image) in the exact same position and angle as the original bottle
+- Remove the original whiskey bottle completely (or any object being held)
+- Place the Keeper's Heart bottle (from second image) in the exact same position and angle as the original
 - Preserve any hands, fingers, or background elements visible in the first image
 - Match the lighting, shadows, and perspective of the original scene
-- Fill in the background naturally where the old bottle was removed
-- The new bottle should look like it's being held in the same way
+- Fill in the background naturally where the old item was removed
+
+HAND & POSITIONING REQUIREMENTS (CRITICAL):
+- If hands are visible holding an object, the Keeper's Heart bottle MUST appear to be held naturally
+- Match the EXACT grip position, finger placement, and hand angle from the first image
+- The bottle should align with how the hands are oriented (vertical, tilted, angled, etc.)
+- Respect the original hand/finger positions - do NOT move, rotate, or distort them
+- The bottle must look like it's being physically gripped, not floating or misaligned
+- If the original object is centered in hands, center the Keeper's Heart bottle the same way
+- If the original is tilted or angled, match that exact tilt/angle with the new bottle
+- Bottle orientation should feel natural and realistic for the hand position shown
+
+SHARPNESS & DETAIL REQUIREMENTS (CRITICAL):
+- Output must be SHARP and HIGH-DETAIL - do NOT blur, soften, or smooth any edges
+- Preserve fine details: label text must be crisp and readable
+- Keep glass reflections, highlights, and cap texture sharp
+- Maintain sharp edges on bottle silhouette, cap, and label borders
+- Do NOT apply any smoothing, noise reduction, or artistic filters
+- Output should look like a high-quality photograph, not a painting or render
 
 Study the second reference image carefully for these details:
 - Distinctive curved bottle shape with elegant profile
-- Cream/beige shield-shaped label with "KEEPER'S HEART" text
-- Copper/gold decorative bands on neck and base
-- Amber/golden whiskey color through the glass
-- Black decorative cap with gold pattern
+- Cream/beige shield-shaped label with "KEEPER'S HEART" text (must be sharp and legible)
+- Copper/gold decorative bands on neck and base (crisp metallic details)
+- Amber/golden whiskey color through the glass (clear, not blurry)
+- Black decorative cap with gold pattern (fine texture visible)
 
 Output ONLY the edited image with EXACTLY ${KEEPERS_WIDTH}x${KEEPERS_HEIGHT} pixels (same as input).`;
 
@@ -367,33 +387,48 @@ Output ONLY the edited image with EXACTLY ${KEEPERS_WIDTH}x${KEEPERS_HEIGHT} pix
       })
       .toBuffer();
 
-    // Create a feathered mask for smooth edge blending
-    // This prevents visible seams at the crop boundaries
-    const FEATHER_SIZE = 15; // pixels to feather at edges
+    // Create a selective feathered mask for smooth edge blending
+    // Only feather the outer 10% of edges, keep center 80% sharp
+    // This prevents visible seams while preserving bottle sharpness
+    const FEATHER_SIZE = 8; // pixels to feather at outer edges
 
-    console.log('[MORPH-SIMPLE API] 🎨 Creating feathered mask for edge blending...');
+    console.log('[MORPH-SIMPLE API] 🎨 Creating selective feathered mask (edges only)...');
 
-    // Create an alpha mask with feathered edges
-    const mask = await sharp({
-      create: {
-        width: cropWidth,
-        height: cropHeight,
-        channels: 4,
-        background: { r: 255, g: 255, b: 255, alpha: 1 }
-      }
-    })
+    // Create an SVG gradient mask that's opaque in center, transparent at edges
+    const featherPercent = (FEATHER_SIZE / Math.min(cropWidth, cropHeight)) * 100;
+    const maskSvg = Buffer.from(`
+      <svg width="${cropWidth}" height="${cropHeight}">
+        <defs>
+          <radialGradient id="feather" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" style="stop-color:white;stop-opacity:1" />
+            <stop offset="80%" style="stop-color:white;stop-opacity:1" />
+            <stop offset="95%" style="stop-color:white;stop-opacity:0.8" />
+            <stop offset="100%" style="stop-color:white;stop-opacity:0" />
+          </radialGradient>
+          <linearGradient id="edgeFade" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" style="stop-color:white;stop-opacity:0" />
+            <stop offset="${featherPercent}%" style="stop-color:white;stop-opacity:1" />
+            <stop offset="${100 - featherPercent}%" style="stop-color:white;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:white;stop-opacity:0" />
+          </linearGradient>
+        </defs>
+        <rect width="${cropWidth}" height="${cropHeight}" fill="url(#edgeFade)" />
+      </svg>
+    `);
+
+    // Convert SVG to PNG buffer
+    const mask = await sharp(maskSvg)
       .png()
       .toBuffer();
 
-    // Apply feathered edges by compositing the edited crop with the mask
+    // Apply feathered mask to preserve sharp center while blending edges
     const featheredCrop = await sharp(resizedEditedCrop)
       .composite([
         {
           input: mask,
-          blend: 'dest-in' // Use mask to create alpha channel
+          blend: 'dest-in' // Use mask to create alpha channel with selective transparency
         }
       ])
-      .blur(0.5) // Subtle blur on the entire crop for smoother integration
       .toBuffer();
 
     console.log('[MORPH-SIMPLE API] 🔧 Compositing feathered crop back onto original...');
@@ -407,7 +442,10 @@ Output ONLY the edited image with EXACTLY ${KEEPERS_WIDTH}x${KEEPERS_HEIGHT} pix
           blend: 'over',
         },
       ])
-      .jpeg({ quality: 90 })
+      .jpeg({
+        quality: 95, // Increased from 90 for sharper final output
+        chromaSubsampling: '4:4:4' // Disable chroma subsampling for maximum sharpness
+      })
       .toBuffer();
 
     const finalBase64 = finalImage.toString('base64');

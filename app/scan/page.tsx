@@ -7,6 +7,7 @@ import { X, Info, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { generateSessionId, saveSession } from "@/lib/session-manager";
 import { saveBottleScan } from "@/lib/supabase-helpers";
+import { isTestModeEnabled, disableTestMode, getMockDetectionResponse } from "@/lib/test-mode";
 
 export default function ScanPage() {
   const router = useRouter();
@@ -14,8 +15,12 @@ export default function ScanPage() {
   const [isDetecting, setIsDetecting] = useState(false);
   const [showManualOverride, setShowManualOverride] = useState(false);
   const [cameraError, setCameraError] = useState(false);
+  const [testMode, setTestMode] = useState(false);
 
   useEffect(() => {
+    // Check if test mode is enabled
+    setTestMode(isTestModeEnabled());
+
     // Show manual override button after 10 seconds
     const timer = setTimeout(() => {
       setShowManualOverride(true);
@@ -30,17 +35,31 @@ export default function ScanPage() {
     setIsDetecting(true);
 
     try {
-      const formData = new FormData();
-      formData.append("image", imageBlob);
+      let data;
 
-      const response = await fetch("/api/detect-bottle", {
-        method: "POST",
-        body: formData,
-      });
+      // TEST MODE: Bypass actual detection and use mock response
+      if (testMode) {
+        console.log('[SCAN PAGE - TEST MODE] 🧪 Bypassing detection, using mock response');
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 500));
+        data = getMockDetectionResponse();
+      } else {
+        // NORMAL MODE: Call real detection API
+        const formData = new FormData();
+        formData.append("image", imageBlob);
 
-      const data = await response.json();
+        const response = await fetch("/api/detect-bottle", {
+          method: "POST",
+          body: formData,
+        });
 
-      if (data.detected && data.confidence > 0.75) {
+        data = await response.json();
+      }
+
+      // In test mode, always detect; in normal mode, check confidence
+      const shouldProceed = testMode || (data.detected && data.confidence > 0.75);
+
+      if (shouldProceed) {
         // Bottle detected! Create session and save to Supabase
         const sessionId = generateSessionId();
         saveSession(sessionId);
@@ -69,6 +88,13 @@ export default function ScanPage() {
               `bottle_bbox_expanded_${sessionId}`,
               JSON.stringify(data.expandedBoundingBox)
             );
+          }
+          // Store brand and aspect ratio for brand-specific shape selection
+          if (data.brand) {
+            sessionStorage.setItem(`bottle_brand_${sessionId}`, data.brand);
+          }
+          if (data.aspectRatio !== null && data.aspectRatio !== undefined) {
+            sessionStorage.setItem(`bottle_aspect_ratio_${sessionId}`, data.aspectRatio.toString());
           }
           // Store segmentation mask if available
           if (data.segmentationMask) {
@@ -126,8 +152,10 @@ export default function ScanPage() {
 
         router.push(`/scanning/${sessionId}`);
       } else {
-        // Update confidence meter
-        setConfidence(Math.round(data.confidence * 100));
+        // Update confidence meter (only in normal mode)
+        if (!testMode) {
+          setConfidence(Math.round(data.confidence * 100));
+        }
       }
     } catch (error) {
       console.error("Detection error:", error);
@@ -140,6 +168,11 @@ export default function ScanPage() {
     const sessionId = generateSessionId();
     saveSession(sessionId);
     router.push(`/scanning/${sessionId}`);
+  };
+
+  const handleDisableTestMode = () => {
+    disableTestMode();
+    setTestMode(false);
   };
 
   const handleUploadPhoto = () => {
@@ -178,6 +211,21 @@ export default function ScanPage() {
 
   return (
     <div className="relative min-h-screen bg-black">
+      {/* Test Mode Badge */}
+      {testMode && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30">
+          <div className="bg-orange-500 text-white px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-lg">
+            🧪 TEST MODE - ANY PHOTO WILL WORK
+            <button
+              onClick={handleDisableTestMode}
+              className="ml-1 hover:text-orange-200 transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top Bar */}
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/60 to-transparent">
         <button
@@ -204,7 +252,9 @@ export default function ScanPage() {
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div
           className={`w-72 h-96 border-4 rounded-3xl transition-all duration-300 ${
-            confidence > 75
+            testMode
+              ? "border-orange-500 shadow-lg shadow-orange-500/50 animate-pulse"
+              : confidence > 75
               ? "border-green-500 shadow-lg shadow-green-500/50"
               : confidence > 30
               ? "border-yellow-500 animate-pulse"
@@ -217,9 +267,13 @@ export default function ScanPage() {
       <div className="absolute top-24 left-0 right-0 z-10 text-center">
         <div className="inline-block bg-black/60 backdrop-blur-sm rounded-full px-6 py-3">
           <p className="text-white text-lg font-semibold">
-            {confidence < 30 && "Looking for bottle..."}
-            {confidence >= 30 && confidence < 75 && `Scanning... ${confidence}%`}
-            {confidence >= 75 && "✓ Jameson detected!"}
+            {testMode
+              ? "🧪 Test Mode - Take any photo"
+              : confidence < 30
+              ? "Looking for bottle..."
+              : confidence >= 30 && confidence < 75
+              ? `Scanning... ${confidence}%`
+              : "✓ Jameson detected!"}
           </p>
         </div>
       </div>
@@ -227,7 +281,7 @@ export default function ScanPage() {
       {/* Instructions */}
       <div className="absolute bottom-32 left-0 right-0 z-10 text-center px-6">
         <p className="text-white text-lg font-medium drop-shadow-lg">
-          Point at Jameson bottle label
+          {testMode ? "Take a photo of anything (hand, table, etc.)" : "Point at Jameson bottle label"}
         </p>
       </div>
 

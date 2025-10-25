@@ -103,6 +103,8 @@ export default function ScanningPage() {
   const [normalizedBox, setNormalizedBox] = useState<NormalizedBox | null>(null);
   const [expandedBox, setExpandedBox] = useState<NormalizedBox | null>(null);
   const [segmentationMask, setSegmentationMask] = useState<string | null>(null);
+  const [detectedBrand, setDetectedBrand] = useState<string | null>(null);
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null);
   const [showContinue, setShowContinue] = useState(false);
 
   // NEW: State to control which animation to show
@@ -132,12 +134,24 @@ export default function ScanningPage() {
       `bottle_bbox_expanded_${sessionId}`
     );
     const mask = sessionStorage.getItem(`bottle_segmentation_mask_${sessionId}`);
+    const brand = sessionStorage.getItem(`bottle_brand_${sessionId}`);
+    const ratio = sessionStorage.getItem(`bottle_aspect_ratio_${sessionId}`);
 
     // Check if morph animation should be enabled
     // Default to true, but allow override via sessionStorage
     const storedValue = sessionStorage.getItem('morph_enabled');
     const morphEnabled = storedValue === null ? true : storedValue === 'true';
     setUseMorphAnimation(morphEnabled);
+
+    // Load brand and aspect ratio for brand-specific shape selection
+    if (brand) {
+      setDetectedBrand(brand);
+      console.log('[ScanningPage] 🏷️  Loaded brand:', brand);
+    }
+    if (ratio) {
+      setAspectRatio(parseFloat(ratio));
+      console.log('[ScanningPage] 📏 Loaded aspect ratio:', ratio);
+    }
 
     // Load segmentation mask if available
     if (mask) {
@@ -355,12 +369,14 @@ export default function ScanningPage() {
         />
       )}
 
-      {/* Burn Animation (Phase 1) - Using Enhanced Animation with optional segmentation mask */}
+      {/* Burn Animation (Phase 1) - Using Enhanced Animation with brand-specific shapes */}
       {bottleImage && animationPhase === 'burn' && (
         <EnhancedFireAnimation
           boundingBox={activeBox}
           imageUrl={bottleImage}
           segmentationMask={segmentationMask || undefined}
+          detectedBrand={detectedBrand}
+          aspectRatio={aspectRatio}
         />
       )}
 

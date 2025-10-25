@@ -93,12 +93,122 @@ npm run dev
 
 ---
 
-## 🧪 Testing (Sandbox)
+## 🧪 Testing Strategies
 
-1. Use test credentials with `PAYPAL_ENVIRONMENT=sandbox`
-2. Create test account at: https://developer.paypal.com/dashboard/accounts
-3. Use test email for payouts
-4. Check sandbox account: https://www.sandbox.paypal.com
+### Option 1: Sandbox Testing (FREE - Recommended)
+
+**Cost: $0.00**
+
+```bash
+# .env.local
+PAYPAL_ENVIRONMENT=sandbox
+PAYPAL_CLIENT_ID=your_sandbox_client_id
+PAYPAL_CLIENT_SECRET=your_sandbox_secret
+```
+
+Steps:
+1. Create test accounts at: https://developer.paypal.com/dashboard/accounts
+2. Use test email for payouts (e.g., `buyer@personal.example.com`)
+3. Check sandbox account: https://www.sandbox.paypal.com
+4. No real money spent - perfect for development
+
+**Pros:**
+- ✅ Completely free
+- ✅ Unlimited testing
+- ✅ Full API functionality
+- ✅ No risk
+
+**Cons:**
+- ❌ Not real-world testing
+- ❌ Requires PayPal developer account
+
+---
+
+### Option 2: Live Testing with Penny Payouts
+
+**Cost: $0.02 per test** (includes PayPal fee)
+
+```bash
+# .env.local
+PAYPAL_ENVIRONMENT=live
+PAYPAL_CLIENT_ID=your_live_client_id
+PAYPAL_CLIENT_SECRET=your_live_secret
+TEST_PAYOUT_AMOUNT=0.01  # Override $5.00 default
+```
+
+Steps:
+1. Use live PayPal credentials
+2. Set `TEST_PAYOUT_AMOUNT=0.01` to send $0.01 instead of $5.00
+3. Use your own email for testing
+4. Verify money arrives in your account
+
+**Pros:**
+- ✅ Real-world testing
+- ✅ Minimal cost ($0.02 per test)
+- ✅ Tests actual money flow
+- ✅ Validates live credentials
+
+**Cons:**
+- ❌ Small cost per test
+- ❌ Uses real PayPal account
+
+**Cost Breakdown:**
+- Payout amount: $0.01
+- PayPal fee: ~$0.01 (minimum fee)
+- **Total: ~$0.02 per test**
+
+---
+
+### Option 3: Full Production Testing
+
+**Cost: $5.25 per test**
+
+```bash
+# .env.local
+PAYPAL_ENVIRONMENT=live
+PAYPAL_CLIENT_ID=your_live_client_id
+PAYPAL_CLIENT_SECRET=your_live_secret
+# Do NOT set TEST_PAYOUT_AMOUNT - uses $5.00 default
+```
+
+**Cost Breakdown:**
+- Payout amount: $5.00
+- PayPal fee: $0.25
+- **Total: $5.25 per test**
+
+Only use this for final pre-launch validation!
+
+---
+
+### Recommended Testing Workflow
+
+**Phase 1: Development (Sandbox - FREE)**
+```bash
+PAYPAL_ENVIRONMENT=sandbox
+# Test unlimited times at $0.00 cost
+```
+
+**Phase 2: Staging ($0.01 Payouts)**
+```bash
+PAYPAL_ENVIRONMENT=live
+TEST_PAYOUT_AMOUNT=0.01
+# Test 5-10 times at $0.10-$0.20 total cost
+```
+
+**Phase 3: Pre-Launch ($5.00 Payout)**
+```bash
+PAYPAL_ENVIRONMENT=live
+# Remove TEST_PAYOUT_AMOUNT
+# Final validation: 1-2 tests at $5.25-$10.50 cost
+```
+
+**Phase 4: Production**
+```bash
+PAYPAL_ENVIRONMENT=live
+# Same as Phase 3 - ready to go!
+```
+
+**Total Testing Cost: ~$0.20 - $11.00** (depending on how many live tests you run)
 
 ---
 

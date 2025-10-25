@@ -280,6 +280,11 @@ async function detectBottleWithVision(
 
   const normalizedBoundingBox = normalizeBoundingPoly(boundingBox, dimensions);
 
+  // Calculate aspect ratio from normalized bounding box for brand-specific shape selection
+  const aspectRatio = normalizedBoundingBox
+    ? normalizedBoundingBox.height / normalizedBoundingBox.width
+    : null;
+
   // Debug logging
   console.log('Detection Summary:', {
     brand: detectedBrand,
@@ -288,6 +293,7 @@ async function detectBottleWithVision(
     boundingBoxSource: boundingBox ? 'found' : 'missing',
     bottleObjectFound: !!bottleObject,
     normalizedBox: normalizedBoundingBox,
+    aspectRatio: aspectRatio?.toFixed(2),
     imageDimensions: dimensions,
   });
 
@@ -333,6 +339,7 @@ async function detectBottleWithVision(
     boundingBox: boundingBox, // Bounding polygon vertices
     normalizedBoundingBox,
     expandedBoundingBox: expandNormalizedBox(normalizedBoundingBox),
+    aspectRatio, // NEW: Height/width ratio for brand-specific shape selection
     segmentationMask, // NEW: Pixel-perfect bottle mask (may be null if failed)
     hasBottle,
     hasWhiskey,
@@ -345,6 +352,7 @@ async function detectBottleWithVision(
       localizedObjectCount: localizedObjects.length,
       bottleObjectScore: bottleObject?.score,
       hasSegmentationMask: !!segmentationMask,
+      aspectRatio: aspectRatio?.toFixed(2),
     }
   };
 }

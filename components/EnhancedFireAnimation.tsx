@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { generateBottleClipPath } from "@/lib/bottle-shape";
+import { generateBottleClipPath, getBrandSpecificShape } from "@/lib/bottle-shape";
 
 interface EnhancedFireAnimationProps {
   boundingBox: {
@@ -12,6 +12,8 @@ interface EnhancedFireAnimationProps {
   };
   imageUrl: string;
   segmentationMask?: string; // Optional: base64 data URL for pixel-perfect clipping
+  detectedBrand?: string | null; // Optional: Brand name for brand-specific shape selection
+  aspectRatio?: number | null; // Optional: Height/width ratio for fallback shape selection
 }
 
 interface Particle {
@@ -28,7 +30,13 @@ interface Particle {
   rotationSpeed?: number;
 }
 
-export default function EnhancedFireAnimation({ boundingBox, imageUrl, segmentationMask }: EnhancedFireAnimationProps) {
+export default function EnhancedFireAnimation({
+  boundingBox,
+  imageUrl,
+  segmentationMask,
+  detectedBrand,
+  aspectRatio
+}: EnhancedFireAnimationProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fireCanvasRef = useRef<HTMLCanvasElement>(null);
   const particlesCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -497,8 +505,9 @@ export default function EnhancedFireAnimation({ boundingBox, imageUrl, segmentat
   }, [boundingBox, imageUrl]);
 
   // Generate bottle-shaped clip-path when no segmentation mask
+  // Priority: Brand-specific shape > Generic shape
   const bottleShapePath = !segmentationMask
-    ? generateBottleClipPath(boundingBox)
+    ? getBrandSpecificShape(detectedBrand || null, aspectRatio || null, boundingBox)
     : null;
 
   // Use ORIGINAL bounding box for positioning - no expansion needed
@@ -539,12 +548,17 @@ export default function EnhancedFireAnimation({ boundingBox, imageUrl, segmentat
     if (segmentationMask) {
       console.log('[EnhancedFireAnimation] 🎭 Using Gemini segmentation mask (pixel-perfect)');
     } else if (bottleShapePath) {
-      console.log('[EnhancedFireAnimation] 🍾 Using bottle-shaped clip-path (mathematical)');
-      console.log('[EnhancedFireAnimation] Clip-path:', bottleShapePath);
+      const shapeType = detectedBrand
+        ? `brand-specific (${detectedBrand}, AR: ${aspectRatio?.toFixed(2) || 'N/A'})`
+        : aspectRatio
+          ? `aspect-ratio-based (${aspectRatio.toFixed(2)})`
+          : 'generic';
+      console.log(`[EnhancedFireAnimation] 🍾 Using bottle-shaped clip-path (${shapeType})`);
+      console.log('[EnhancedFireAnimation] Clip-path:', bottleShapePath.substring(0, 100) + '...');
     } else {
       console.log('[EnhancedFireAnimation] 📦 Using rectangular bounding box (fallback)');
     }
-  }, [segmentationMask, bottleShapePath]);
+  }, [segmentationMask, bottleShapePath, detectedBrand, aspectRatio]);
 
   return (
     <>
