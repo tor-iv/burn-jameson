@@ -631,31 +631,186 @@ Test YOLO model on:
 
 ---
 
-## Cost Comparison
+## Detailed Pricing Comparison
 
-### Scenario A: Low Volume (10,000 scans/month)
-- **Google Vision:** 10,000 × $0.0015 = **$15/month**
-- **Roboflow Serverless:** 10,000 × $0.0015 = **$15/month** (similar)
-- **Roboflow Dedicated:** **$49/month** (CPU) or **$299/month** (GPU) - more expensive
-- **Self-Hosted:** AWS EC2 g4dn.xlarge **$360/month** - most expensive
+### Google Cloud Vision API Pricing (2025)
 
-**Recommendation:** Stick with Google Vision or use Roboflow Serverless (similar cost, better accuracy)
+**Pricing Structure:**
+- **Free Tier:** First 1,000 units per month (per feature)
+- **Tier 1 (1,001 - 5,000,000 units):** $1.50 per 1,000 units
+- **Tier 2 (5,000,001+ units):** $0.60 per 1,000 units
 
-### Scenario B: Medium Volume (100,000 scans/month)
-- **Google Vision:** 100,000 × $0.0015 = **$150/month**
-- **Roboflow Serverless:** 100,000 × $0.0015 = **$150/month** (similar)
-- **Roboflow Dedicated (T4 GPU):** **$299/month** - cheaper, faster, better accuracy
-- **Self-Hosted:** AWS EC2 g4dn.xlarge **$360/month** - slightly more expensive but full control
+**Important Notes:**
+- **Each feature is billed separately:** If you use TEXT_DETECTION, LOGO_DETECTION, and OBJECT_LOCALIZATION on the same 1,000 images, you're charged for 3,000 units total ($4.50, not $1.50)
+- **Current implementation uses 3 features:** TEXT_DETECTION + LOGO_DETECTION + OBJECT_LOCALIZATION = **$4.50 per 1,000 images** (after free tier)
+- **Optimized implementation (2 features):** TEXT_DETECTION + OBJECT_LOCALIZATION = **$3.00 per 1,000 images**
+- **Prorated billing:** Final block of requests is prorated out of 1,000
 
-**Recommendation:** Roboflow Dedicated (T4 GPU) for best price/performance
+**Monthly Cost Examples:**
+- 1,000 scans: **$0** (free tier)
+- 10,000 scans: **$27** (3 features) or **$18** (2 features)
+- 50,000 scans: **$220.50** (3 features) or **$147** (2 features)
+- 100,000 scans: **$445.50** (3 features) or **$297** (2 features)
+- 500,000 scans: **$2,245.50** (3 features) or **$1,497** (2 features)
+- 1,000,000 scans: **$4,495.50** (3 features) or **$2,997** (2 features)
 
-### Scenario C: High Volume (1,000,000 scans/month)
-- **Google Vision:** 1,000,000 × $0.0015 = **$1,500/month**
-- **Roboflow Serverless:** 1,000,000 × $0.0015 = **$1,500/month** (similar)
-- **Roboflow Dedicated (T4 GPU):** **$299/month** - **5x cheaper**
-- **Self-Hosted:** AWS EC2 g4dn.xlarge **$360/month** - **4x cheaper**
+### Roboflow Pricing (2025)
 
-**Recommendation:** Self-hosted or Roboflow Dedicated for massive cost savings
+**Plan Options:**
+
+1. **Free (Public) Plan:**
+   - 1,000 hosted inference API calls/month
+   - Unlimited public datasets
+   - Basic features only
+   - **Cost:** $0/month
+
+2. **Starter Plan:**
+   - 10,000 hosted inference API calls/month
+   - 30 credits/month ($120 value)
+   - Private datasets
+   - Custom training
+   - **Cost:** $49/month (annual) or higher monthly
+
+3. **Growth Plan:**
+   - 150 credits/month (1,800/year if annual)
+   - Unlimited hosted inference (within credit limits)
+   - Advanced features
+   - Priority support
+   - **Cost:** $299/month (annual: $249/month)
+
+**Credit System:**
+- Credits: $3 per credit (annual) or $4 per credit (monthly)
+- **Serverless inference:** ~0.03-0.05 credits per prediction (varies by model size)
+- **Estimated cost per 1,000 inferences:** $0.12-0.20 (using credits)
+
+**Deployment Options:**
+
+1. **Serverless Hosted API (Pay-per-use):**
+   - Scales to zero when idle
+   - **Estimated:** ~$0.15-0.25 per 1,000 predictions (credit-based)
+   - Free tier: 1,000 predictions/month
+   - Best for: Testing, low-volume production
+
+2. **Dedicated Deployment:**
+   - **CPU (Development):** $49-99/month
+     - ~200-300ms inference time
+     - Best for: Testing, light production
+   - **T4 GPU (Production):** $299/month
+     - ~50-100ms inference time
+     - Unlimited predictions within dedicated instance
+     - Best for: Medium-high volume (>200,000 scans/month)
+   - **A10 GPU (High Performance):** $599/month
+     - ~20-50ms inference time
+     - Unlimited predictions
+     - Best for: Very high volume, low latency requirements
+
+3. **Self-Hosted (Free Software):**
+   - **Roboflow Inference:** FREE (open-source)
+   - **Infrastructure costs only:**
+     - AWS EC2 g4dn.xlarge: ~$360/month (~$0.50/hour)
+     - DigitalOcean GPU Droplet: ~$300/month
+     - Your own GPU server: $0/month (upfront hardware costs)
+   - **Best for:** High volume (>500,000 scans/month), full control, offline capability
+
+### Cost Comparison by Volume
+
+#### Scenario A: Low Volume (10,000 scans/month)
+
+| Solution | Monthly Cost | Cost per 1,000 | Notes |
+|----------|--------------|----------------|-------|
+| **Google Vision (3 features)** | $27.00 | $2.70 | After 1k free tier |
+| **Google Vision (2 features)** | $18.00 | $1.80 | Optimized (no LOGO_DETECTION) |
+| **Roboflow Serverless** | $1.50-2.50 | $0.15-0.25 | Using credits, 1k free tier |
+| **Roboflow Starter Plan** | $49.00 | $4.90 | Includes 10k calls + 30 credits |
+| **Roboflow Dedicated CPU** | $49.00 | $4.90 | Fixed cost, unlimited calls |
+| **Roboflow Dedicated T4 GPU** | $299.00 | $29.90 | Too expensive for this volume |
+| **Self-Hosted** | $300-360 | $30-36 | Too expensive for this volume |
+
+**Winner:** Roboflow Serverless ($1.50-2.50/month) **✓ 85-95% cheaper than Google Vision**
+
+**Recommendation:** Use Roboflow Serverless for testing and low-volume production. Much cheaper than Google Vision with better accuracy.
+
+---
+
+#### Scenario B: Medium Volume (100,000 scans/month)
+
+| Solution | Monthly Cost | Cost per 1,000 | Notes |
+|----------|--------------|----------------|-------|
+| **Google Vision (3 features)** | $445.50 | $4.46 | 3 API features |
+| **Google Vision (2 features)** | $297.00 | $2.97 | Optimized |
+| **Roboflow Serverless** | $15-25 | $0.15-0.25 | Using credits |
+| **Roboflow Growth Plan** | $299.00 | $2.99 | 150 credits/month (~100k calls) |
+| **Roboflow Dedicated T4 GPU** | $299.00 | $2.99 | Unlimited calls, faster inference |
+| **Self-Hosted** | $300-360 | $3.00-3.60 | Full control, unlimited calls |
+
+**Winner:** Roboflow Serverless ($15-25/month) or Growth Plan ($299/month for unlimited) **✓ 93-97% cheaper than Google Vision**
+
+**Recommendation:** Roboflow Growth Plan ($299/month) gives unlimited inference + 150 credits for training/features. Much better value than Google Vision.
+
+---
+
+#### Scenario C: High Volume (500,000 scans/month)
+
+| Solution | Monthly Cost | Cost per 1,000 | Notes |
+|----------|--------------|----------------|-------|
+| **Google Vision (3 features)** | $2,245.50 | $4.49 | 3 API features |
+| **Google Vision (2 features)** | $1,497.00 | $2.99 | Optimized |
+| **Roboflow Serverless** | $75-125 | $0.15-0.25 | Using credits |
+| **Roboflow Growth Plan** | $299.00 | $0.60 | Unlimited calls (best value) |
+| **Roboflow Dedicated T4 GPU** | $299.00 | $0.60 | Unlimited, low latency |
+| **Self-Hosted** | $300-360 | $0.60-0.72 | Full control, offline |
+
+**Winner:** Roboflow Growth Plan or Dedicated T4 GPU ($299/month) **✓ 80-87% cheaper than Google Vision**
+
+**Recommendation:** Roboflow Dedicated T4 GPU ($299/month) for guaranteed low latency (50-100ms) and unlimited predictions. Massive cost savings vs Google Vision.
+
+---
+
+#### Scenario D: Very High Volume (1,000,000+ scans/month)
+
+| Solution | Monthly Cost | Cost per 1,000 | Notes |
+|----------|--------------|----------------|-------|
+| **Google Vision (3 features)** | $4,495.50 | $4.50 | 3 API features |
+| **Google Vision (2 features)** | $2,997.00 | $3.00 | Optimized |
+| **Roboflow Serverless** | $150-250 | $0.15-0.25 | Using many credits |
+| **Roboflow Growth Plan** | $299.00 | $0.30 | Unlimited calls |
+| **Roboflow Dedicated T4 GPU** | $299.00 | $0.30 | Best for production scale |
+| **Roboflow Dedicated A10 GPU** | $599.00 | $0.60 | Ultra-low latency (20-50ms) |
+| **Self-Hosted** | $300-360 | $0.30-0.36 | Full control, best value |
+
+**Winner:** Self-Hosted ($300-360/month) or Roboflow Dedicated T4 ($299/month) **✓ 88-93% cheaper than Google Vision**
+
+**Recommendation:** Self-host Roboflow Inference for maximum cost savings and control. At this scale, $300-360/month infrastructure cost provides unlimited inference vs $2,997-4,495/month with Google Vision.
+
+---
+
+### Summary: When to Choose Each Solution
+
+**Choose Google Vision API if:**
+- Very low volume (<1,000 scans/month, within free tier)
+- Need quick proof-of-concept with zero setup
+- Don't want to manage custom models
+- Need OCR + object detection for other use cases
+
+**Choose Roboflow Serverless if:**
+- Low-medium volume (1,000-50,000 scans/month)
+- Want custom-trained model without infrastructure management
+- Need better accuracy than Google Vision
+- Budget-conscious (85-95% cost savings)
+
+**Choose Roboflow Dedicated (T4 GPU) if:**
+- Medium-high volume (50,000-1,000,000+ scans/month)
+- Need consistent low latency (no cold starts)
+- Want unlimited predictions at fixed monthly cost
+- Production workload with SLA requirements
+
+**Choose Self-Hosted if:**
+- Very high volume (500,000+ scans/month)
+- Need offline capability or full data privacy
+- Want maximum cost efficiency (88-93% savings at scale)
+- Have DevOps capacity to manage infrastructure
+
+**Bottom Line:** Roboflow + YOLOv11/v12 provides 80-95% cost savings over Google Vision at medium-high volumes, with better accuracy and faster inference times.
 
 ---
 
