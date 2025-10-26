@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
 export async function GET() {
+  // Disable in production
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      { error: 'Test endpoints disabled in production' },
+      { status: 404 }
+    );
+  }
+
   try {
     // Test database connection by querying users table
     const { data, error } = await supabase

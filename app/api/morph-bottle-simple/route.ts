@@ -3,6 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 
+// Cache Keeper's Heart reference image in memory (loaded once on first request)
+let keepersHeartCached: Buffer | null = null;
+
 /**
  * Bottle morph API using Gemini 2.5 Flash Image for realistic inpainting
  *
@@ -104,14 +107,16 @@ export async function POST(request: NextRequest) {
 
     console.log('[MORPH-SIMPLE API] 📐 Original image dimensions:', imgWidth, 'x', imgHeight);
 
-    // STEP 1: Calculate crop region with aspect ratio matching
-    // Keeper's Heart reference image dimensions
-    const KEEPERS_WIDTH = 699;
-    const KEEPERS_HEIGHT = 1900;
-    const KEEPERS_ASPECT = KEEPERS_WIDTH / KEEPERS_HEIGHT; // ~0.368 (tall/narrow)
+    // STEP 1: Calculate crop region with padding for context
+    // We'll send the crop to Gemini at its natural size (no resizing)
+    // This ensures perfect 1:1 replacement without aspect ratio distortion
 
-    // Add 20% padding around the bottle for context (increased from 15% for better blending)
-    const PADDING_PERCENT = 0.20;
+    // Keeper's Heart bottle aspect ratio (tall/narrow bottle)
+    const KEEPERS_ASPECT = 0.5; // Width/height ratio for typical whiskey bottle
+
+    // Add 30% padding around the bottle for context (helps Gemini blend edges naturally)
+    // Increased from 20% to include more hands/background for better contextual blending
+    const PADDING_PERCENT = 0.30;
 
     // Convert normalized bounding box (0-1) to pixel coordinates
     let bottleX = Math.round(boundingBox.x * imgWidth);
@@ -181,8 +186,7 @@ export async function POST(request: NextRequest) {
       paddingPercent: `${PADDING_PERCENT * 100}%`,
     });
 
-    // Extract the bottle crop and resize to match Keeper's Heart dimensions
-    // This ensures Gemini receives both images at the same scale for 1:1 replacement
+    // Extract the bottle crop at its natural size (with padding)
     const bottleCrop = await sharp(originalBuffer)
       .extract({
         left: cropX,
@@ -190,19 +194,42 @@ export async function POST(request: NextRequest) {
         width: cropWidth,
         height: cropHeight,
       })
-      .resize(KEEPERS_WIDTH, KEEPERS_HEIGHT, {
-        fit: 'fill', // Force exact dimensions (may slightly distort, but ensures aspect match)
-        kernel: 'lanczos3', // High-quality interpolation
-      })
       .jpeg({
-        quality: 98, // Increased from 95 for maximum quality to Gemini
+        quality: 90,
         chromaSubsampling: '4:4:4' // Disable chroma subsampling for sharpest output
       })
       .toBuffer();
 
-    const bottleCropBase64 = bottleCrop.toString('base64');
-    console.log('[MORPH-SIMPLE API] ✅ Extracted and resized bottle crop:', Math.round(bottleCropBase64.length * 0.75 / 1024), 'KB');
-    console.log('[MORPH-SIMPLE API] 📏 Crop resized to match Keeper\'s dimensions:', KEEPERS_WIDTH, 'x', KEEPERS_HEIGHT);
+    // Intelligent resolution scaling for performance
+    // Only resize if crop exceeds 1536px (maintains quality for phone photos, speeds up high-res)
+    // Increased from 1000px to 1536px for better detail and context awareness
+    const MAX_GEMINI_DIMENSION = 1536;
+    let scaleFactor = 1;
+    let geminiCropWidth = cropWidth;
+    let geminiCropHeight = cropHeight;
+    let geminiCropBase64 = bottleCrop.toString('base64');
+
+    if (cropWidth > MAX_GEMINI_DIMENSION || cropHeight > MAX_GEMINI_DIMENSION) {
+      scaleFactor = MAX_GEMINI_DIMENSION / Math.max(cropWidth, cropHeight);
+      geminiCropWidth = Math.round(cropWidth * scaleFactor);
+      geminiCropHeight = Math.round(cropHeight * scaleFactor);
+
+      const scaledCrop = await sharp(bottleCrop)
+        .resize(geminiCropWidth, geminiCropHeight, {
+          kernel: 'lanczos3', // High-quality downscaling
+          fit: 'fill'
+        })
+        .jpeg({ quality: 90, chromaSubsampling: '4:4:4' })
+        .toBuffer();
+
+      geminiCropBase64 = scaledCrop.toString('base64');
+
+      console.log('[MORPH-SIMPLE API] 📉 Scaled crop from', cropWidth, 'x', cropHeight, 'to', geminiCropWidth, 'x', geminiCropHeight, 'for faster Gemini processing');
+    } else {
+      console.log('[MORPH-SIMPLE API] ✅ Using original crop size:', cropWidth, 'x', cropHeight, '(no scaling needed)');
+    }
+
+    console.log('[MORPH-SIMPLE API] 📦 Crop size for Gemini:', Math.round(geminiCropBase64.length * 0.75 / 1024), 'KB');
 
     // STEP 2: Load Keeper's Heart reference and call Gemini
     const apiKey = process.env.GEMINI_API_KEY;
@@ -214,53 +241,130 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const keepersHeartPath = path.join(process.cwd(), 'public', 'images', 'keepersheart.png');
-    const keepersHeartBuffer = fs.readFileSync(keepersHeartPath);
-    const keepersHeartBase64 = keepersHeartBuffer.toString('base64');
+    // Load Keeper's Heart reference (cached after first load)
+    if (!keepersHeartCached) {
+      const keepersHeartPath = path.join(process.cwd(), 'public', 'images', 'keepersheart.png');
+      keepersHeartCached = fs.readFileSync(keepersHeartPath);
+      console.log('[MORPH-SIMPLE API] 📸 Loaded Keeper\'s Heart reference image (cached for future requests)');
+    } else {
+      console.log('[MORPH-SIMPLE API] 📸 Using cached Keeper\'s Heart reference image');
+    }
 
-    console.log('[MORPH-SIMPLE API] 📸 Loaded Keeper\'s Heart reference image');
+    // Send reference at original quality - let Gemini scale it appropriately
+    // This preserves image quality and actually improves Gemini's understanding of the bottle
+    const keepersHeartBase64 = keepersHeartCached.toString('base64');
 
-    const prompt = `Replace the whiskey bottle in the first image with the exact bottle shown in the second reference image.
+    // STEP 2.5: Extract lighting context BEFORE calling Gemini (so we can include it in the prompt)
+    console.log('[MORPH-SIMPLE API] 📊 Extracting lighting context from crop...');
+    const cropStats = await sharp(bottleCrop).stats();
+    const rMean = cropStats.channels[0].mean;
+    const gMean = cropStats.channels[1].mean;
+    const bMean = cropStats.channels[2].mean;
+    const brightness = (rMean + gMean + bMean) / 3;
+    const colorTemp = rMean - bMean; // Positive = warm (more red), negative = cool (more blue)
+
+    // Determine lighting description for prompt
+    let brightnessDesc = 'medium';
+    if (brightness > 180) brightnessDesc = 'bright, well-lit';
+    else if (brightness > 120) brightnessDesc = 'moderately bright';
+    else if (brightness > 80) brightnessDesc = 'dim, low-light';
+    else brightnessDesc = 'very dark';
+
+    let tempDesc = 'neutral';
+    if (Math.abs(colorTemp) > 30) {
+      tempDesc = colorTemp > 0 ? 'warm yellow/orange' : 'cool blue';
+    } else if (Math.abs(colorTemp) > 15) {
+      tempDesc = colorTemp > 0 ? 'slightly warm' : 'slightly cool';
+    }
+
+    console.log(`[MORPH-SIMPLE API] 💡 Lighting detected: ${brightnessDesc} with ${tempDesc} color temperature (R:${Math.round(rMean)}, G:${Math.round(gMean)}, B:${Math.round(bMean)})`);
+
+    // STEP 2.6: Detect bottle perspective/orientation for prompt guidance
+    // Analyze bottle aspect ratio and position to infer tilt/rotation
+    const bottleAspect = bottleWidth / bottleHeight;
+    const expectedAspect = 0.5; // Typical whiskey bottle (width/height)
+    const aspectDiff = Math.abs(bottleAspect - expectedAspect);
+
+    // Detect if bottle appears tilted based on aspect ratio deviation
+    // If aspect is significantly different from expected, bottle is likely tilted
+    let perspectiveNote = '';
+    if (aspectDiff > 0.15) {
+      if (bottleAspect > expectedAspect) {
+        perspectiveNote = 'The bottle appears to be tilted or rotated at an angle (wider than expected). ';
+      } else {
+        perspectiveNote = 'The bottle appears to be tilted or viewed from a steep angle (narrower than expected). ';
+      }
+    } else {
+      perspectiveNote = 'The bottle appears to be upright and facing the camera. ';
+    }
+
+    // Check bottle position in frame for additional perspective clues
+    const centerX = boundingBox.x + boundingBox.width / 2;
+    const centerY = boundingBox.y + boundingBox.height / 2;
+
+    if (centerY < 0.4) {
+      perspectiveNote += 'The bottle is positioned in the upper portion of the frame. ';
+    } else if (centerY > 0.6) {
+      perspectiveNote += 'The bottle is positioned in the lower portion of the frame. ';
+    }
+
+    console.log(`[MORPH-SIMPLE API] 📐 Perspective analysis: aspect=${bottleAspect.toFixed(3)} (expected=${expectedAspect}), ${perspectiveNote}`);
+
+    // Enhanced prompt for natural lighting adaptation with SPECIFIC lighting context
+    const prompt = `You are doing photo editing to seamlessly replace one bottle with another in a real photograph.
+
+INPUT IMAGES:
+- Image 1 (${geminiCropWidth}x${geminiCropHeight}px): A cropped photo showing a bottle being held. This has real-world lighting, shadows, and natural hand positioning.
+- Image 2: A product reference photo of Keeper's Heart whiskey bottle (studio lighting, neutral background).
+
+SCENE ANALYSIS (Image 1):
+- Brightness: ${brightnessDesc} (RGB average: ${Math.round(brightness)})
+- Color Temperature: ${tempDesc} tones (R-B difference: ${Math.round(colorTemp)})
+- Lighting environment: ${tempDesc === 'warm yellow/orange' ? 'warm indoor lighting or sunset glow' : tempDesc === 'cool blue' ? 'cool daylight or fluorescent lighting' : 'balanced neutral lighting'}
+- Bottle orientation: ${perspectiveNote}
+
+YOUR TASK:
+Replace the bottle in Image 1 with the Keeper's Heart bottle from Image 2, making it look like the person was always holding a Keeper's Heart bottle in this exact photo.
 
 CRITICAL REQUIREMENTS:
-- Both images are ${KEEPERS_WIDTH}x${KEEPERS_HEIGHT} pixels - MAINTAIN EXACT DIMENSIONS
-- Remove the original whiskey bottle completely (or any object being held)
-- Place the Keeper's Heart bottle (from second image) in the exact same position and angle as the original
-- Preserve any hands, fingers, or background elements visible in the first image
-- Match the lighting, shadows, and perspective of the original scene
-- Fill in the background naturally where the old item was removed
 
-HAND & POSITIONING REQUIREMENTS (CRITICAL):
-- If hands are visible holding an object, the Keeper's Heart bottle MUST appear to be held naturally
-- Match the EXACT grip position, finger placement, and hand angle from the first image
-- The bottle should align with how the hands are oriented (vertical, tilted, angled, etc.)
-- Respect the original hand/finger positions - do NOT move, rotate, or distort them
-- The bottle must look like it's being physically gripped, not floating or misaligned
-- If the original object is centered in hands, center the Keeper's Heart bottle the same way
-- If the original is tilted or angled, match that exact tilt/angle with the new bottle
-- Bottle orientation should feel natural and realistic for the hand position shown
+1. LIGHTING & COLOR ADAPTATION (MOST IMPORTANT):
+   - The scene has ${tempDesc} lighting with ${brightnessDesc} exposure
+   - Apply ${tempDesc === 'warm yellow/orange' ? 'warm amber/yellow color cast to the entire bottle' : tempDesc === 'cool blue' ? 'cool blue color cast to the entire bottle' : 'neutral balanced lighting to the bottle'}
+   - Match the brightness level: make the bottle ${brightnessDesc === 'bright, well-lit' ? 'bright and well-exposed' : brightnessDesc === 'dim, low-light' ? 'darker and muted' : 'moderately exposed'}
+   - Adjust glass reflections to show ${tempDesc} lighting (not studio white)
+   - Match shadow intensity and direction from Image 1's environment
+   - The bottle's liquid color should reflect the ${tempDesc} lighting environment
 
-SHARPNESS & DETAIL REQUIREMENTS (CRITICAL):
-- Output must be SHARP and HIGH-DETAIL - do NOT blur, soften, or smooth any edges
-- Preserve fine details: label text must be crisp and readable
-- Keep glass reflections, highlights, and cap texture sharp
-- Maintain sharp edges on bottle silhouette, cap, and label borders
-- Do NOT apply any smoothing, noise reduction, or artistic filters
-- Output should look like a high-quality photograph, not a painting or render
+2. POSITIONING & PERSPECTIVE:
+   - ${perspectiveNote}Match this EXACT orientation and angle.
+   - Match the exact tilt, rotation, and perspective angle of the original bottle in Image 1
+   - Scale the Keeper's Heart bottle to match the size of the original bottle
+   - If hands are visible, align the bottle with the hand grip naturally
+   - Maintain the original bottle's position and orientation
 
-Study the second reference image carefully for these details:
-- Distinctive curved bottle shape with elegant profile
-- Cream/beige shield-shaped label with "KEEPER'S HEART" text (must be sharp and legible)
-- Copper/gold decorative bands on neck and base (crisp metallic details)
-- Amber/golden whiskey color through the glass (clear, not blurry)
-- Black decorative cap with gold pattern (fine texture visible)
+3. PRESERVATION:
+   - Keep ALL hands, fingers, skin, and background from Image 1 completely unchanged
+   - Only replace the bottle itself - everything else stays identical
 
-Output ONLY the edited image with EXACTLY ${KEEPERS_WIDTH}x${KEEPERS_HEIGHT} pixels (same as input).`;
+4. NATURAL BLENDING:
+   - Bottle edges should blend naturally (soft transitions, not hard crisp edges)
+   - Match the photo's overall sharpness/blur level (don't make bottle sharper than the rest of the photo)
+   - Ensure the bottle looks like it belongs in this specific environment
+
+5. OUTPUT:
+   - Return exactly ${geminiCropWidth}x${geminiCropHeight} pixels (match input dimensions)
+   - Photo-realistic result (not artistic/painted style)
+   - Focus on making it look NATURAL and REAL, not perfect or studio-quality
+
+The goal is seamless integration - a viewer should not be able to tell the bottle was edited.`;
 
     console.log('[MORPH-SIMPLE API] 🎨 Calling Gemini API for bottle replacement...');
     const geminiStartTime = Date.now();
 
-    const geminiResponse = await fetch(
+    // Call Gemini API with lighting-aware prompt
+    // Using Gemini 2.5 Flash Image model for image editing/generation
+    const geminiPromise = fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
       {
         method: 'POST',
@@ -275,7 +379,7 @@ Output ONLY the edited image with EXACTLY ${KEEPERS_WIDTH}x${KEEPERS_HEIGHT} pix
                 {
                   inlineData: {
                     mimeType: 'image/jpeg',
-                    data: bottleCropBase64,
+                    data: geminiCropBase64, // Use scaled crop for faster processing
                   },
                 },
                 {
@@ -289,13 +393,17 @@ Output ONLY the edited image with EXACTLY ${KEEPERS_WIDTH}x${KEEPERS_HEIGHT} pix
             },
           ],
           generationConfig: {
-            temperature: 0.4,
+            temperature: 0.3, // Lowered from 0.4 for more consistent results
             topP: 0.8,
             topK: 40,
+            response_modalities: ['Image'], // Required: tells Gemini to return image data
           },
         }),
       }
     );
+
+    // Wait for Gemini API to complete (color stats already extracted above)
+    const geminiResponse = await geminiPromise;
 
     const geminiEndTime = Date.now();
     console.log(`[MORPH-SIMPLE API] ⏱️  Gemini API responded in ${geminiEndTime - geminiStartTime}ms`);
@@ -372,64 +480,108 @@ Output ONLY the edited image with EXACTLY ${KEEPERS_WIDTH}x${KEEPERS_HEIGHT} pix
     // STEP 3: Composite the edited crop back onto the original image
     const editedCropBuffer = Buffer.from(editedCropBase64, 'base64');
 
-    // Get dimensions of the edited crop from Gemini
+    // Verify dimensions of the edited crop from Gemini
     const editedCropMetadata = await sharp(editedCropBuffer).metadata();
     console.log('[MORPH-SIMPLE API] 📏 Edited crop dimensions from Gemini:', editedCropMetadata.width, 'x', editedCropMetadata.height);
-    console.log('[MORPH-SIMPLE API] 📏 Expected Keeper\'s dimensions:', KEEPERS_WIDTH, 'x', KEEPERS_HEIGHT);
-    console.log('[MORPH-SIMPLE API] 📏 Original crop dimensions (for compositing):', cropWidth, 'x', cropHeight);
+    console.log('[MORPH-SIMPLE API] 📏 Target dimensions:', geminiCropWidth, 'x', geminiCropHeight);
 
-    // Resize the edited crop from Keeper's dimensions back to original crop size
-    // We sent Gemini a 699x1900 image, now scale back to the original crop dimensions
-    const resizedEditedCrop = await sharp(editedCropBuffer)
-      .resize(cropWidth, cropHeight, {
-        fit: 'fill', // Force exact dimensions to match original crop
-        kernel: 'lanczos3', // High-quality resizing for smooth scaling
+    // Extract color stats from Gemini's output for enhanced color matching
+    const editedCropStats = await sharp(editedCropBuffer).stats();
+
+    // Calculate color shift needed to match original image tone
+    const rShift = cropStats.channels[0].mean - editedCropStats.channels[0].mean;
+    const gShift = cropStats.channels[1].mean - editedCropStats.channels[1].mean;
+    const bShift = cropStats.channels[2].mean - editedCropStats.channels[2].mean;
+
+    // Determine color matching strength based on how different the colors are
+    // If Gemini already matched well, use lighter correction (30%)
+    // If colors are very different, use stronger correction (60%)
+    const colorDifference = Math.sqrt(rShift ** 2 + gShift ** 2 + bShift ** 2);
+    const matchingStrength = Math.min(0.3 + (colorDifference / 100) * 0.3, 0.6); // 30-60% range
+
+    console.log('[MORPH-SIMPLE API] 🎨 Enhanced color matching:');
+    console.log(`  - Color shift: R=${Math.round(rShift)}, G=${Math.round(gShift)}, B=${Math.round(bShift)}`);
+    console.log(`  - Total difference: ${Math.round(colorDifference)}`);
+    console.log(`  - Matching strength: ${Math.round(matchingStrength * 100)}%`);
+
+    // Resize back to original crop size (if it was scaled down) and apply color matching
+    // Color matching ensures the edited bottle matches the lighting/color tone of the original photo
+    let processedCrop = sharp(editedCropBuffer);
+
+    // If we scaled down for Gemini, scale back up to original crop size
+    if (scaleFactor < 1) {
+      console.log('[MORPH-SIMPLE API] 📈 Scaling result back up from', geminiCropWidth, 'x', geminiCropHeight, 'to', cropWidth, 'x', cropHeight);
+      processedCrop = processedCrop.resize(cropWidth, cropHeight, {
+        kernel: 'lanczos3', // High-quality upscaling
+        fit: 'fill'
+      });
+    }
+
+    // Apply enhanced color adjustment to match source image tone (30-60% strength adaptive)
+    // This helps blend the Gemini-generated bottle with real-world lighting
+    const resizedEditedCrop = await processedCrop
+      .linear(
+        [1.0, 1.0, 1.0], // Slope (no change to contrast)
+        [rShift * matchingStrength, gShift * matchingStrength, bShift * matchingStrength] // Offset: adaptive strength
+      )
+      .modulate({
+        saturation: 0.95, // Slightly desaturate for more natural look
       })
       .toBuffer();
 
-    // Create a selective feathered mask for smooth edge blending
-    // Only feather the outer 10% of edges, keep center 80% sharp
-    // This prevents visible seams while preserving bottle sharpness
-    const FEATHER_SIZE = 8; // pixels to feather at outer edges
+    // Create a radial feathered mask for smooth edge blending
+    // Uses elliptical gradient to match bottle shape, with larger feather for natural blending
+    const FEATHER_SIZE = 25; // Increased from 8px for softer, more natural edges
 
-    console.log('[MORPH-SIMPLE API] 🎨 Creating selective feathered mask (edges only)...');
+    console.log('[MORPH-SIMPLE API] 🎨 Creating radial feathered mask for natural edge blending...');
 
-    // Create an SVG gradient mask that's opaque in center, transparent at edges
+    // Calculate feather as percentage of the smaller dimension
     const featherPercent = (FEATHER_SIZE / Math.min(cropWidth, cropHeight)) * 100;
+
+    // Create an elliptical radial gradient mask
+    // - Fully opaque in center (70%)
+    // - Gradual fade from 70% to 100% radius
+    // - Matches bottle's tall/narrow shape better than linear gradient
     const maskSvg = Buffer.from(`
       <svg width="${cropWidth}" height="${cropHeight}">
         <defs>
-          <radialGradient id="feather" cx="50%" cy="50%" r="50%">
+          <radialGradient id="softMask" cx="50%" cy="50%" r="50%">
             <stop offset="0%" style="stop-color:white;stop-opacity:1" />
-            <stop offset="80%" style="stop-color:white;stop-opacity:1" />
-            <stop offset="95%" style="stop-color:white;stop-opacity:0.8" />
+            <stop offset="70%" style="stop-color:white;stop-opacity:1" />
+            <stop offset="85%" style="stop-color:white;stop-opacity:0.9" />
+            <stop offset="95%" style="stop-color:white;stop-opacity:0.5" />
             <stop offset="100%" style="stop-color:white;stop-opacity:0" />
           </radialGradient>
-          <linearGradient id="edgeFade" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" style="stop-color:white;stop-opacity:0" />
-            <stop offset="${featherPercent}%" style="stop-color:white;stop-opacity:1" />
-            <stop offset="${100 - featherPercent}%" style="stop-color:white;stop-opacity:1" />
-            <stop offset="100%" style="stop-color:white;stop-opacity:0" />
-          </linearGradient>
         </defs>
-        <rect width="${cropWidth}" height="${cropHeight}" fill="url(#edgeFade)" />
+        <ellipse cx="${cropWidth/2}" cy="${cropHeight/2}"
+                 rx="${cropWidth/2 - 5}" ry="${cropHeight/2 - 5}"
+                 fill="url(#softMask)" />
       </svg>
     `);
 
-    // Convert SVG to PNG buffer
+    // Convert SVG to PNG buffer with exact dimensions
     const mask = await sharp(maskSvg)
+      .resize(cropWidth, cropHeight, { fit: 'fill' })
       .png()
       .toBuffer();
 
     // Apply feathered mask to preserve sharp center while blending edges
     const featheredCrop = await sharp(resizedEditedCrop)
+      .resize(cropWidth, cropHeight, { fit: 'fill' }) // Ensure exact dimensions
       .composite([
         {
           input: mask,
           blend: 'dest-in' // Use mask to create alpha channel with selective transparency
         }
       ])
+      .resize(cropWidth, cropHeight, { fit: 'fill' }) // Ensure output is exact dimensions
       .toBuffer();
+
+    // Verify feathered crop dimensions before compositing
+    const featheredCropMetadata = await sharp(featheredCrop).metadata();
+    console.log('[MORPH-SIMPLE API] 📏 Feathered crop dimensions:', featheredCropMetadata.width, 'x', featheredCropMetadata.height);
+    console.log('[MORPH-SIMPLE API] 📏 Target crop dimensions:', cropWidth, 'x', cropHeight);
+    console.log('[MORPH-SIMPLE API] 📏 Composite position:', cropX, ',', cropY);
 
     console.log('[MORPH-SIMPLE API] 🔧 Compositing feathered crop back onto original...');
 
