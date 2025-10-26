@@ -102,6 +102,36 @@ function expandNormalizedBox(box: NormalizedBoundingBox | null, expandX = 1.20, 
   };
 }
 
+/**
+ * Expand logo bounding box to approximate full bottle dimensions
+ * Logos typically cover only the label area (center 1/3 of bottle)
+ * We expand vertically to estimate full bottle height
+ */
+function expandLogoToBottle(logoBoundingPoly: any, dimensions: { width?: number | null; height?: number | null }): NormalizedBoundingBox | null {
+  const normalized = normalizeBoundingPoly(logoBoundingPoly, dimensions);
+  if (!normalized) return null;
+
+  // Typical whiskey bottle aspect ratio is 2.5:1 to 3.5:1 (height:width)
+  // Logo typically covers middle 30-40% of bottle height
+  // Expand vertically by 3x to approximate full bottle
+  const centerX = normalized.x + normalized.width / 2;
+  const centerY = normalized.y + normalized.height / 2;
+
+  const newWidth = normalized.width * 1.5; // Logos are narrower than bottle
+  const newHeight = normalized.height * 3.0; // Expand to full bottle height
+
+  // Clamp to bounds
+  const x = Math.max(0, centerX - newWidth / 2);
+  const y = Math.max(0, centerY - newHeight / 2);
+
+  return {
+    x,
+    y,
+    width: Math.min(newWidth, 1 - x),
+    height: Math.min(newHeight, 1 - y),
+  };
+}
+
 async function detectBottleWithVision(
   imageBuffer: Buffer,
   dimensions: { width?: number | null; height?: number | null }
@@ -137,6 +167,7 @@ async function detectBottleWithVision(
               { type: 'TEXT_DETECTION', maxResults: 50 }, // Read brand names on bottle
               { type: 'LOGO_DETECTION', maxResults: 10 }, // Detect brand logos (fallback)
               { type: 'OBJECT_LOCALIZATION', maxResults: 10 }, // Best bounding boxes
+              { type: 'CROP_HINTS', maxResults: 3 }, // NEW: Composition analysis for fallback
             ],
           },
         ],
@@ -179,16 +210,25 @@ async function detectBottleWithVision(
     boundingPoly: obj.boundingPoly
   })) || [];
 
-  // Find bottle object for better bounding box fallback
-  const bottleObject = localizedObjects.find((obj: any) =>
-    obj.name?.toLowerCase().includes('bottle')
-  );
+  // Get crop hints (composition analysis)
+  const cropHints = result.cropHintsAnnotation?.cropHints || [];
+
+  // ENHANCED: Find bottle object - try multiple object types
+  const bottleObject = localizedObjects.find((obj: any) => {
+    const name = obj.name?.toLowerCase() || '';
+    return ['bottle', 'drink', 'beverage', 'alcohol', 'liquor', 'wine bottle'].some(keyword => name.includes(keyword));
+  });
 
   // Debug: Log what objects were detected
   if (localizedObjects.length > 0) {
     console.log('📦 OBJECT_LOCALIZATION detected:', localizedObjects.map((o: any) => `${o.name} (${(o.score * 100).toFixed(0)}%)`).join(', '));
   } else {
     console.log('⚠️  OBJECT_LOCALIZATION found no objects (bottle detection may use fallback)');
+  }
+
+  // Debug: Log crop hints
+  if (cropHints.length > 0) {
+    console.log('✂️  CROP_HINTS available:', cropHints.length, 'suggestions');
   }
 
   // Check for competitor brands in text, labels, and logos
@@ -248,28 +288,57 @@ async function detectBottleWithVision(
     }
   }
 
-  // BOUNDING BOX PRIORITY (separate from brand detection):
-  // 1. ALWAYS prefer bottle object localization (most accurate - detects full bottle)
-  // 2. Fall back to logo bounding box only if no bottle object found
-  // 3. Never use text bounding boxes (they're just the text, not the bottle)
+  // ENHANCED MULTI-PASS BOUNDING BOX DETECTION
+  // Try multiple strategies in priority order for maximum accuracy
+  let boundingBoxSource = 'none';
 
   if (detectedBrand) {
+    // PASS 1: OBJECT_LOCALIZATION - Bottle/Drink/Beverage object (BEST)
     if (bottleObject) {
       boundingBox = bottleObject.boundingPoly;
-      console.log('✓ Using bottle object bounding box (OBJECT_LOCALIZATION - most accurate)');
-    } else {
-      console.log('⚠️  WARNING: No bottle object found via OBJECT_LOCALIZATION');
-      // Try to use logo bounding box as last resort
+      boundingBoxSource = 'object_localization';
+      console.log('✅ [PASS 1] Using bottle object bounding box (OBJECT_LOCALIZATION - most accurate)');
+    }
+    // PASS 2: Expanded logo bounding box (GOOD)
+    else {
       const matchingLogo = logos.find((logo: any) => {
         const desc = logo.description?.toLowerCase() || '';
         return Object.keys(COMPETITOR_BRANDS).some(keyword => desc.includes(keyword));
       });
+
       if (matchingLogo) {
-        boundingBox = matchingLogo.boundingPoly;
-        console.log('⚠️  Using logo bounding box as fallback (less accurate - only covers label area)');
-      } else {
-        console.log('❌ No bounding box available - detection may fail');
+        // Expand logo box to approximate full bottle dimensions
+        const expandedLogo = expandLogoToBottle(matchingLogo.boundingPoly, dimensions);
+        if (expandedLogo) {
+          // Convert back to bounding poly format for consistency
+          boundingBox = {
+            normalizedVertices: [
+              { x: expandedLogo.x, y: expandedLogo.y },
+              { x: expandedLogo.x + expandedLogo.width, y: expandedLogo.y },
+              { x: expandedLogo.x + expandedLogo.width, y: expandedLogo.y + expandedLogo.height },
+              { x: expandedLogo.x, y: expandedLogo.y + expandedLogo.height },
+            ]
+          };
+          boundingBoxSource = 'logo_expanded';
+          console.log('⚠️  [PASS 2] Using expanded logo bounding box (3x vertical expansion)');
+        }
       }
+    }
+
+    // PASS 3: CROP_HINTS - Vision API composition analysis (FALLBACK)
+    if (!boundingBox && cropHints.length > 0) {
+      // Use the first (best) crop hint suggestion
+      const bestCropHint = cropHints[0];
+      boundingBox = bestCropHint.boundingPoly;
+      boundingBoxSource = 'crop_hints';
+      console.log('⚠️  [PASS 3] Using CROP_HINTS suggestion (composition analysis)');
+    }
+
+    // PASS 4: Centered fallback with standard bottle proportions (LAST RESORT)
+    if (!boundingBox) {
+      console.log('❌ [PASS 4] No bounding box detected - using centered fallback');
+      boundingBoxSource = 'fallback_centered';
+      // Will use FALLBACK_BOX in client (defined in scanning page)
     }
   }
 
@@ -292,8 +361,9 @@ async function detectBottleWithVision(
     brand: detectedBrand,
     confidence: brandConfidence,
     hasBoundingBox: !!boundingBox,
-    boundingBoxSource: boundingBox ? 'found' : 'missing',
+    boundingBoxSource, // NEW: Shows which detection pass succeeded
     bottleObjectFound: !!bottleObject,
+    cropHintsAvailable: cropHints.length,
     normalizedBox: normalizedBoundingBox,
     aspectRatio: aspectRatio?.toFixed(2),
     imageDimensions: dimensions,
@@ -339,10 +409,11 @@ async function detectBottleWithVision(
     brand: detectedBrand || 'Unknown',
     confidence: brandConfidence,
     boundingBox: boundingBox, // Bounding polygon vertices
+    boundingBoxSource, // NEW: Which detection strategy succeeded
     normalizedBoundingBox,
     expandedBoundingBox: expandNormalizedBox(normalizedBoundingBox),
-    aspectRatio, // NEW: Height/width ratio for brand-specific shape selection
-    segmentationMask, // NEW: Pixel-perfect bottle mask (may be null if failed)
+    aspectRatio, // Height/width ratio for brand-specific shape selection
+    segmentationMask, // Pixel-perfect bottle mask (may be null if failed)
     hasBottle,
     hasWhiskey,
     labels: labels.map((l: { description: string; score: number }) => l.description).filter(Boolean),
@@ -352,6 +423,7 @@ async function detectBottleWithVision(
       logoCount: logos.length,
       textAnnotationCount: textAnnotations.length,
       localizedObjectCount: localizedObjects.length,
+      cropHintsCount: cropHints.length,
       bottleObjectScore: bottleObject?.score,
       hasSegmentationMask: !!segmentationMask,
       aspectRatio: aspectRatio?.toFixed(2),

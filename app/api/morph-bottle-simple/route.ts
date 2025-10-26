@@ -36,6 +36,7 @@ interface MorphRequest {
     width: number; // Normalized 0-1
     height: number; // Normalized 0-1
   };
+  objectType?: 'hand' | 'can' | 'sparkling' | null; // Type of object being morphed (test mode)
 }
 
 interface GeminiResponse {
@@ -68,9 +69,12 @@ export async function POST(request: NextRequest) {
   try {
     console.log('[MORPH-SIMPLE API] 📦 Parsing request body...');
     const body: MorphRequest = await request.json();
-    const { image, boundingBox } = body;
+    const { image, boundingBox, objectType } = body;
 
     console.log('[MORPH-SIMPLE API] Request parsed after', Date.now() - startTime, 'ms');
+    if (objectType) {
+      console.log('[MORPH-SIMPLE API] 🎯 Object type:', objectType);
+    }
 
     if (!image) {
       console.error('[MORPH-SIMPLE API] ❌ No image in request');
@@ -310,21 +314,38 @@ export async function POST(request: NextRequest) {
 
     console.log(`[MORPH-SIMPLE API] 📐 Perspective analysis: aspect=${bottleAspect.toFixed(3)} (expected=${expectedAspect}), ${perspectiveNote}`);
 
+    // Determine source object description based on object type
+    let sourceObjectDesc = 'bottle';
+    let taskDesc = 'Replace the bottle in Image 1 with the Keeper\'s Heart bottle from Image 2';
+
+    if (objectType === 'can') {
+      sourceObjectDesc = 'soda can';
+      taskDesc = 'Replace the soda can in Image 1 with the Keeper\'s Heart whiskey bottle from Image 2';
+    } else if (objectType === 'sparkling') {
+      sourceObjectDesc = 'sparkling water bottle';
+      taskDesc = 'Replace the sparkling water bottle in Image 1 with the Keeper\'s Heart whiskey bottle from Image 2';
+    } else if (objectType === 'hand') {
+      sourceObjectDesc = 'hand (holding or positioned where a bottle would be)';
+      taskDesc = 'Add a Keeper\'s Heart whiskey bottle to Image 1, positioned naturally in or near the hand shown';
+    }
+
+    console.log(`[MORPH-SIMPLE API] 📝 Source object: ${sourceObjectDesc}`);
+
     // Enhanced prompt for natural lighting adaptation with SPECIFIC lighting context
-    const prompt = `You are doing photo editing to seamlessly replace one bottle with another in a real photograph.
+    const prompt = `You are doing photo editing to seamlessly transform an object in a real photograph.
 
 INPUT IMAGES:
-- Image 1 (${geminiCropWidth}x${geminiCropHeight}px): A cropped photo showing a bottle being held. This has real-world lighting, shadows, and natural hand positioning.
+- Image 1 (${geminiCropWidth}x${geminiCropHeight}px): A cropped photo showing a ${sourceObjectDesc}. This has real-world lighting, shadows, and natural positioning.
 - Image 2: A product reference photo of Keeper's Heart whiskey bottle (studio lighting, neutral background).
 
 SCENE ANALYSIS (Image 1):
 - Brightness: ${brightnessDesc} (RGB average: ${Math.round(brightness)})
 - Color Temperature: ${tempDesc} tones (R-B difference: ${Math.round(colorTemp)})
 - Lighting environment: ${tempDesc === 'warm yellow/orange' ? 'warm indoor lighting or sunset glow' : tempDesc === 'cool blue' ? 'cool daylight or fluorescent lighting' : 'balanced neutral lighting'}
-- Bottle orientation: ${perspectiveNote}
+- Object orientation: ${perspectiveNote}
 
 YOUR TASK:
-Replace the bottle in Image 1 with the Keeper's Heart bottle from Image 2, making it look like the person was always holding a Keeper's Heart bottle in this exact photo.
+${taskDesc}, making it look like the person was always holding or positioned with a Keeper's Heart bottle in this exact photo.
 
 CRITICAL REQUIREMENTS:
 
@@ -338,14 +359,14 @@ CRITICAL REQUIREMENTS:
 
 2. POSITIONING & PERSPECTIVE:
    - ${perspectiveNote}Match this EXACT orientation and angle.
-   - Match the exact tilt, rotation, and perspective angle of the original bottle in Image 1
-   - Scale the Keeper's Heart bottle to match the size of the original bottle
-   - If hands are visible, align the bottle with the hand grip naturally
-   - Maintain the original bottle's position and orientation
+   - Match the exact tilt, rotation, and perspective angle of the original ${sourceObjectDesc} in Image 1
+   - Scale the Keeper's Heart bottle to match the size and position of the original ${sourceObjectDesc}
+   - If hands are visible, align the bottle with the hand grip naturally (make it look like the hand is holding the Keeper's Heart bottle)
+   - Maintain the original ${sourceObjectDesc}'s position and orientation
 
 3. PRESERVATION:
    - Keep ALL hands, fingers, skin, and background from Image 1 completely unchanged
-   - Only replace the bottle itself - everything else stays identical
+   - Only replace the ${sourceObjectDesc} itself - everything else stays identical
 
 4. NATURAL BLENDING:
    - Bottle edges should blend naturally (soft transitions, not hard crisp edges)

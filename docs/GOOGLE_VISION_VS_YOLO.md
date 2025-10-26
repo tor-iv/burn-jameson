@@ -753,9 +753,9 @@ Use this table to decide which solution fits your needs:
 ---
 
 **Next Steps:**
-1. Read [docs/YOLO_ROBOFLOW_INTEGRATION.md](YOLO_ROBOFLOW_INTEGRATION.md) for implementation guide
+1. Read [docs/ROBOFLOW_IMPLEMENTATION_GUIDE.md](ROBOFLOW_IMPLEMENTATION_GUIDE.md) for complete implementation guide
 2. Create Roboflow account and start dataset collection
-3. Schedule 2-week sprint for training and A/B testing
+3. Schedule 4-week implementation (Week 1: Dataset, Week 2: Training, Week 3: A/B Test, Week 4: Deploy)
 4. Set success criteria: YOLO detection rate ≥ 90%, latency ≤ 150ms, cost ≤ $300/month
 
 ---

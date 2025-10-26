@@ -7,7 +7,7 @@ import { X, Info, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { generateSessionId, saveSession } from "@/lib/session-manager";
 import { saveBottleScan } from "@/lib/supabase-helpers";
-import { isTestModeEnabled, disableTestMode, getMockDetectionResponse } from "@/lib/debug-mode";
+import { isTestModeEnabled, disableTestMode, getMockDetectionResponse, type TestObjectType, type DetectionMode } from "@/lib/debug-mode";
 
 interface HandBoundingBox {
   x: number;
@@ -24,10 +24,10 @@ export default function ScanPage() {
   const [cameraError, setCameraError] = useState(false);
   const [testMode, setTestMode] = useState(false);
 
-  // NEW: Hand detection state
-  const [handDetectionAttempts, setHandDetectionAttempts] = useState(0);
-  const [handPosition, setHandPosition] = useState<HandBoundingBox | null>(null);
-  const [handDetectionStatus, setHandDetectionStatus] = useState<'searching' | 'found' | 'fallback'>('searching');
+  // NEW: Detection mode toggle (can or hand)
+  const [detectionMode, setDetectionMode] = useState<DetectionMode>('can');
+  const [detectedPosition, setDetectedPosition] = useState<HandBoundingBox | null>(null);
+  const [detectedObjectType, setDetectedObjectType] = useState<TestObjectType>(null);
 
   useEffect(() => {
     // Check if test mode is enabled
@@ -49,62 +49,70 @@ export default function ScanPage() {
     try {
       let data;
 
-      // TEST MODE: Intelligent hand detection + mock response
+      // TEST MODE: Call detection API based on mode, then use mock response
       if (testMode) {
-        console.log('[SCAN PAGE - TEST MODE] 🧪 Test mode active');
+        console.log(`[SCAN PAGE - TEST MODE] 🧪 Test mode active - ${detectionMode.toUpperCase()} mode`);
 
-        // STEP 1: Try hand detection for first 3 attempts (if we don't have a hand position yet)
-        if (handDetectionAttempts < 3 && !handPosition) {
-          console.log(`[SCAN PAGE - TEST MODE] 🤚 Hand detection attempt ${handDetectionAttempts + 1}/3`);
-          setHandDetectionStatus('searching');
+        try {
+          const formData = new FormData();
+          formData.append("image", imageBlob);
 
-          try {
-            const formData = new FormData();
-            formData.append("image", imageBlob);
+          // Call appropriate detection API based on mode
+          const detectionEndpoint = detectionMode === 'hand' ? '/api/detect-hand' : '/api/detect-can';
+          const detectionResponse = await fetch(detectionEndpoint, {
+            method: "POST",
+            body: formData,
+          });
 
-            const handResponse = await fetch("/api/detect-hand", {
-              method: "POST",
-              body: formData,
-            });
+          if (detectionResponse.ok) {
+            const detectionData = await detectionResponse.json();
 
-            if (handResponse.ok) {
-              const handData = await handResponse.json();
+            // Check if we found something
+            let foundObject = false;
+            let position = null;
+            let objectType: TestObjectType = null;
 
-              if (handData.handDetected && !handData.fallbackUsed) {
-                // Hand found! Store position and stop searching
-                console.log('[SCAN PAGE - TEST MODE] ✅ Hand detected!', handData.handBoundingBox);
-                setHandPosition(handData.handBoundingBox);
-                setHandDetectionStatus('found');
-                // Don't increment attempts - we found it!
-              } else {
-                // No hand found, increment attempts
-                console.log(`[SCAN PAGE - TEST MODE] ⚠️  No hand found (attempt ${handDetectionAttempts + 1}/3)`);
-                setHandDetectionAttempts(handDetectionAttempts + 1);
-
-                // If we've exhausted attempts, use fallback
-                if (handDetectionAttempts + 1 >= 3) {
-                  console.log('[SCAN PAGE - TEST MODE] 📍 Using fallback position after 3 attempts');
-                  setHandDetectionStatus('fallback');
-                }
+            if (detectionMode === 'hand') {
+              // Hand detection
+              if (detectionData.handDetected && !detectionData.fallbackUsed) {
+                foundObject = true;
+                position = detectionData.handBoundingBox;
+                objectType = 'hand';
+                console.log('[SCAN PAGE - TEST MODE] ✅ Hand detected!', position);
               }
             } else {
-              // Hand detection API failed, increment attempts
-              setHandDetectionAttempts(handDetectionAttempts + 1);
+              // Can/sparkling detection
+              if (detectionData.detected) {
+                foundObject = true;
+                position = detectionData.normalizedBoundingBox;
+                objectType = detectionData.objectType || 'can';
+                console.log(`[SCAN PAGE - TEST MODE] ✅ ${objectType} detected!`, position);
+              }
             }
-          } catch (handError) {
-            console.error('[SCAN PAGE - TEST MODE] ❌ Hand detection error:', handError);
-            setHandDetectionAttempts(handDetectionAttempts + 1);
-          }
 
-          // Don't proceed to bottle detection yet - we're still looking for hand
+            if (foundObject && position) {
+              // Object found! Store position and type, then generate mock response
+              setDetectedPosition(position);
+              setDetectedObjectType(objectType);
+              await new Promise(resolve => setTimeout(resolve, 300)); // Brief delay for user feedback
+              data = getMockDetectionResponse(position, detectionMode);
+            } else {
+              // Nothing found - update confidence and keep scanning
+              const conf = detectionMode === 'hand' ? 0.3 : (detectionData.confidence || 0);
+              setConfidence(Math.round(conf * 100));
+              setIsDetecting(false);
+              return;
+            }
+          } else {
+            // Detection API failed - keep scanning
+            setIsDetecting(false);
+            return;
+          }
+        } catch (detectionError) {
+          console.error('[SCAN PAGE - TEST MODE] ❌ Detection error:', detectionError);
           setIsDetecting(false);
           return;
         }
-
-        // STEP 2: Generate mock response with hand position (or fallback if no hand found)
-        console.log('[SCAN PAGE - TEST MODE] 🎯 Generating mock response with position:', handPosition || 'fallback');
-        await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
-        data = getMockDetectionResponse(handPosition);
 
       } else {
         // NORMAL MODE: Call real detection API
@@ -159,6 +167,11 @@ export default function ScanPage() {
           if (data.aspectRatio !== null && data.aspectRatio !== undefined) {
             sessionStorage.setItem(`bottle_aspect_ratio_${sessionId}`, data.aspectRatio.toString());
           }
+          // Store object type (for test mode: hand, can, sparkling)
+          if (data.objectType) {
+            sessionStorage.setItem(`object_type_${sessionId}`, data.objectType);
+            console.log('[SCAN PAGE] 🎯 Stored object type:', data.objectType);
+          }
           // Store segmentation mask if available
           if (data.segmentationMask) {
             sessionStorage.setItem(
@@ -179,6 +192,7 @@ export default function ScanPage() {
               body: JSON.stringify({
                 image: base64Image,
                 boundingBox: data.expandedBoundingBox || data.normalizedBoundingBox,
+                objectType: data.objectType || null, // Pass object type for test mode
               }),
             })
               .then(async (response) => {
@@ -238,6 +252,15 @@ export default function ScanPage() {
     setTestMode(false);
   };
 
+  const handleToggleDetectionMode = () => {
+    const newMode: DetectionMode = detectionMode === 'can' ? 'hand' : 'can';
+    setDetectionMode(newMode);
+    setDetectedPosition(null); // Reset detected position when switching modes
+    setDetectedObjectType(null);
+    setConfidence(0);
+    console.log(`[SCAN PAGE] Switched to ${newMode.toUpperCase()} mode`);
+  };
+
   const handleUploadPhoto = () => {
     // TODO: Implement file upload fallback
     alert("Photo upload coming soon!");
@@ -274,22 +297,23 @@ export default function ScanPage() {
 
   return (
     <div className="relative min-h-screen bg-black">
-      {/* Test Mode Badge - Shows hand detection status */}
+      {/* Test Mode Badge - Shows current detection mode */}
       {testMode && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30">
           <div className={`${
-            handDetectionStatus === 'searching' ? 'bg-orange-500 animate-pulse' :
-            handDetectionStatus === 'found' ? 'bg-green-500' :
-            'bg-yellow-500'
+            detectedPosition ? 'bg-green-500' : 'bg-orange-500 animate-pulse'
           } text-white px-4 py-2 rounded-full font-bold text-sm flex items-center gap-2 shadow-lg transition-colors`}>
-            {handDetectionStatus === 'searching' && (
-              <>🤚 LOOKING FOR HAND... ({handDetectionAttempts + 1}/3)</>
-            )}
-            {handDetectionStatus === 'found' && (
-              <>✅ HAND FOUND! HOLD STEADY</>
-            )}
-            {handDetectionStatus === 'fallback' && (
-              <>📍 READY - TAKE PHOTO</>
+            {detectedPosition ? (
+              <>
+                {detectionMode === 'hand' && '✅ HAND FOUND! HOLD STEADY'}
+                {detectionMode === 'can' && detectedObjectType === 'can' && '✅ CAN FOUND! HOLD STEADY'}
+                {detectionMode === 'can' && detectedObjectType === 'sparkling' && '✅ BOTTLE FOUND! HOLD STEADY'}
+              </>
+            ) : (
+              <>
+                {detectionMode === 'hand' && '🤚 HAND MODE - LOOKING...'}
+                {detectionMode === 'can' && '🥫 CAN MODE - LOOKING...'}
+              </>
             )}
             <button
               onClick={handleDisableTestMode}
@@ -309,9 +333,25 @@ export default function ScanPage() {
         >
           <X className="w-6 h-6" />
         </button>
-        <button className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/60 transition-colors">
-          <Info className="w-6 h-6" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Test Mode Toggle Button */}
+          {testMode && (
+            <button
+              onClick={handleToggleDetectionMode}
+              className="px-4 py-2 rounded-full bg-black/60 backdrop-blur-sm flex items-center gap-2 text-white hover:bg-black/80 transition-colors border-2 border-white/30"
+            >
+              <span className="text-lg">
+                {detectionMode === 'can' ? '🥫' : '🤚'}
+              </span>
+              <span className="text-sm font-semibold">
+                {detectionMode === 'can' ? 'Can Mode' : 'Hand Mode'}
+              </span>
+            </button>
+          )}
+          <button className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center text-white hover:bg-black/60 transition-colors">
+            <Info className="w-6 h-6" />
+          </button>
+        </div>
       </div>
 
       {/* Video Feed */}
@@ -328,11 +368,9 @@ export default function ScanPage() {
         <div
           className={`w-72 h-96 border-4 rounded-3xl transition-all duration-300 ${
             testMode
-              ? handDetectionStatus === 'searching'
-                ? "border-orange-500 shadow-lg shadow-orange-500/50 animate-pulse"
-                : handDetectionStatus === 'found'
+              ? detectedPosition
                 ? "border-green-500 shadow-lg shadow-green-500/50"
-                : "border-yellow-500 shadow-lg shadow-yellow-500/50"
+                : "border-orange-500 shadow-lg shadow-orange-500/50 animate-pulse"
               : confidence > 75
               ? "border-green-500 shadow-lg shadow-green-500/50"
               : confidence > 30
@@ -347,11 +385,15 @@ export default function ScanPage() {
         <div className="inline-block bg-black/60 backdrop-blur-sm rounded-full px-6 py-3">
           <p className="text-white text-lg font-semibold">
             {testMode
-              ? handDetectionStatus === 'searching'
-                ? `🤚 Looking for hand... (${handDetectionAttempts + 1}/3)`
-                : handDetectionStatus === 'found'
-                ? "✅ Hand found! Position your photo"
-                : "📍 Ready to scan"
+              ? detectedPosition
+                ? detectionMode === 'hand'
+                  ? "✅ Hand found! Position your photo"
+                  : detectedObjectType === 'can'
+                  ? "✅ Can found! Position your photo"
+                  : "✅ Sparkling water found! Position your photo"
+                : detectionMode === 'hand'
+                ? "🤚 Looking for hand..."
+                : "🥫 Looking for can or bottle..."
               : confidence < 30
               ? "Looking for bottle..."
               : confidence >= 30 && confidence < 75
@@ -365,9 +407,11 @@ export default function ScanPage() {
       <div className="absolute bottom-32 left-0 right-0 z-10 text-center px-6">
         <p className="text-white text-lg font-medium drop-shadow-lg">
           {testMode
-            ? handDetectionStatus === 'searching'
+            ? detectedPosition
+              ? "Ready - take your photo!"
+              : detectionMode === 'hand'
               ? "Show your hand to the camera"
-              : "Ready - take your photo!"
+              : "Show a can or bottle to the camera"
             : "Point at Jameson bottle label"}
         </p>
       </div>

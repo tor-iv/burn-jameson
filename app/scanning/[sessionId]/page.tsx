@@ -6,21 +6,35 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import dynamic from "next/dynamic";
 import { resizeImage, getBase64Size, formatBytes } from "@/lib/image-utils";
+import {
+  getAnimationMode,
+  isTwoPhaseAnimation,
+  getAnimationConfig,
+  type AnimationMode,
+} from "@/lib/animation-manager";
 
-// Import the bottle morph animation
+// Dynamic animation imports - all animation modes
+const EnhancedFireAnimation = dynamic(() => import("@/components/EnhancedFireAnimation"), {
+  ssr: false,
+});
+
+const ThreeBurnAnimation = dynamic(() => import("@/components/ThreeBurnAnimation"), {
+  ssr: false,
+});
+
+const BurnAnimation = dynamic(() => import("@/components/burn-animation"), {
+  ssr: false,
+});
+
+const LottieBurnAnimation = dynamic(() => import("@/components/LottieBurnAnimation"), {
+  ssr: false,
+});
+
 const BottleMorphAnimation = dynamic(() => import("@/components/BottleMorphAnimation"), {
   ssr: false,
 });
 
 const SimpleBottleMorph = dynamic(() => import("@/components/SimpleBottleMorph"), {
-  ssr: false,
-});
-
-const CanvasFireAnimation = dynamic(() => import("@/components/CanvasFireAnimation"), {
-  ssr: false,
-});
-
-const EnhancedFireAnimation = dynamic(() => import("@/components/EnhancedFireAnimation"), {
   ssr: false,
 });
 
@@ -105,11 +119,13 @@ export default function ScanningPage() {
   const [segmentationMask, setSegmentationMask] = useState<string | null>(null);
   const [detectedBrand, setDetectedBrand] = useState<string | null>(null);
   const [aspectRatio, setAspectRatio] = useState<number | null>(null);
+  const [objectType, setObjectType] = useState<string | null>(null);
   const [showContinue, setShowContinue] = useState(false);
 
-  // NEW: State to control which animation to show
+  // Animation mode management
+  const [animationMode, setAnimationMode] = useState<AnimationMode>('enhanced-fire');
   const [animationPhase, setAnimationPhase] = useState<'burn' | 'morph' | 'complete'>('burn');
-  const [useMorphAnimation, setUseMorphAnimation] = useState(false); // Toggle for morph feature
+  const [useTwoPhase, setUseTwoPhase] = useState(false);
 
   // NEW: Preloaded transformed image state
   const [preloadedTransformedImage, setPreloadedTransformedImage] = useState<string | null>(null);
@@ -136,12 +152,13 @@ export default function ScanningPage() {
     const mask = sessionStorage.getItem(`bottle_segmentation_mask_${sessionId}`);
     const brand = sessionStorage.getItem(`bottle_brand_${sessionId}`);
     const ratio = sessionStorage.getItem(`bottle_aspect_ratio_${sessionId}`);
+    const storedObjectType = sessionStorage.getItem(`object_type_${sessionId}`);
 
-    // Check if morph animation should be enabled
-    // Default to true, but allow override via sessionStorage
-    const storedValue = sessionStorage.getItem('morph_enabled');
-    const morphEnabled = storedValue === null ? true : storedValue === 'true';
-    setUseMorphAnimation(morphEnabled);
+    // Load animation mode from animation manager
+    const mode = getAnimationMode();
+    setAnimationMode(mode);
+    setUseTwoPhase(isTwoPhaseAnimation(mode));
+    console.log('[ScanningPage] 🎬 Animation mode:', mode);
 
     // Load brand and aspect ratio for brand-specific shape selection
     if (brand) {
@@ -151,6 +168,10 @@ export default function ScanningPage() {
     if (ratio) {
       setAspectRatio(parseFloat(ratio));
       console.log('[ScanningPage] 📏 Loaded aspect ratio:', ratio);
+    }
+    if (storedObjectType) {
+      setObjectType(storedObjectType);
+      console.log('[ScanningPage] 🎯 Object type:', storedObjectType);
     }
 
     // Load segmentation mask if available
@@ -200,12 +221,15 @@ export default function ScanningPage() {
   }, [router, sessionId]);
 
   useEffect(() => {
-    if (useMorphAnimation) {
+    const config = getAnimationConfig(animationMode);
+    const duration = config.estimatedDuration;
+
+    if (useTwoPhase) {
       // Two-phase animation: burn then morph
-      // Fire now burns at 120px/sec, taking ~6 seconds to completely burn through bottle
+      const burnDuration = duration * 0.6; // First 60% is burn
       const burnTimer = setTimeout(() => {
         setAnimationPhase('morph');
-      }, 6000); // 6 seconds - faster burn, then morph
+      }, burnDuration);
 
       // DON'T auto-advance when morph is enabled - let the animation complete first
       // The handleMorphComplete callback will show the continue button
@@ -214,31 +238,34 @@ export default function ScanningPage() {
         clearTimeout(burnTimer);
       };
     } else {
-      // Burn-only timing: faster burn animation
-      const buttonTimer = setTimeout(() => setShowContinue(true), 6500);
+      // Single-phase animation: just burn
+      const buttonTimer = setTimeout(() => setShowContinue(true), duration + 500);
 
       const autoTimer = setTimeout(() => {
         if (!hasNavigated.current) {
           hasNavigated.current = true;
           router.push(`/success/${sessionId}`);
         }
-      }, 8000);
+      }, duration + 2000);
 
       return () => {
         clearTimeout(buttonTimer);
         clearTimeout(autoTimer);
       };
     }
-  }, [router, sessionId, useMorphAnimation]);
+  }, [router, sessionId, animationMode, useTwoPhase]);
 
   const activeBox = useMemo<NormalizedBox>(() => {
     return expandedBox ?? normalizedBox ?? FALLBACK_BOX;
   }, [expandedBox, normalizedBox]);
 
-  // NEW: Check for preloaded image from scan page, or preload during burn animation
+  // Preload transformed image for AI morph animations
   useEffect(() => {
-    // Only preload if morph animation is enabled and we have the necessary data
-    if (!useMorphAnimation || !bottleImage) {
+    // Only preload if using AI morph modes and we have the necessary data
+    if (!useTwoPhase || !bottleImage) {
+      return;
+    }
+    if (animationMode !== 'ai-morph-simple' && animationMode !== 'ai-morph-full') {
       return;
     }
 
@@ -283,6 +310,7 @@ export default function ScanningPage() {
             image: imageToSend,
             // Use normalizedBox (not expandedBox) since morph API adds its own padding
             boundingBox: normalizedBox || activeBox,
+            objectType: objectType || null, // Pass object type for test mode
           }),
         });
 
@@ -332,7 +360,7 @@ export default function ScanningPage() {
     return () => {
       isCancelled = true;
     };
-  }, [useMorphAnimation, bottleImage, activeBox]);
+  }, [useTwoPhase, bottleImage, activeBox, sessionId, normalizedBox, objectType]);
 
   const handleContinue = () => {
     if (hasNavigated.current) return;
@@ -343,6 +371,116 @@ export default function ScanningPage() {
   const handleMorphComplete = () => {
     setAnimationPhase('complete');
     setShowContinue(true);
+  };
+
+  // Render burn animation based on selected mode
+  const renderBurnAnimation = () => {
+    if (!bottleImage) return null;
+
+    switch (animationMode) {
+      case 'enhanced-fire':
+        return (
+          <EnhancedFireAnimation
+            boundingBox={activeBox}
+            imageUrl={bottleImage}
+            segmentationMask={segmentationMask || undefined}
+            detectedBrand={detectedBrand}
+            aspectRatio={aspectRatio}
+          />
+        );
+
+      case 'three-shader':
+        return (
+          <ThreeBurnAnimation
+            boundingBox={activeBox}
+            imageUrl={bottleImage}
+          />
+        );
+
+      case 'framer-flames':
+        return (
+          <BurnAnimation
+            isActive={true}
+            onComplete={() => {}}
+          />
+        );
+
+      case 'lottie':
+        return (
+          <LottieBurnAnimation
+            boundingBox={activeBox}
+            imageUrl={bottleImage}
+          />
+        );
+
+      // AI morph modes use EnhancedFireAnimation for burn phase
+      case 'ai-morph-full':
+      case 'ai-morph-simple':
+        return (
+          <EnhancedFireAnimation
+            boundingBox={activeBox}
+            imageUrl={bottleImage}
+            segmentationMask={segmentationMask || undefined}
+            detectedBrand={detectedBrand}
+            aspectRatio={aspectRatio}
+          />
+        );
+
+      default:
+        return (
+          <EnhancedFireAnimation
+            boundingBox={activeBox}
+            imageUrl={bottleImage}
+            segmentationMask={segmentationMask || undefined}
+            detectedBrand={detectedBrand}
+            aspectRatio={aspectRatio}
+          />
+        );
+    }
+  };
+
+  // Render morph animation for two-phase modes
+  const renderMorphAnimation = () => {
+    if (!bottleImage || !useTwoPhase) return null;
+
+    switch (animationMode) {
+      case 'ai-morph-full':
+        return (
+          <BottleMorphAnimation
+            capturedImage={bottleImage}
+            boundingBox={activeBox}
+            onComplete={handleMorphComplete}
+            useThreeFrameMode={false}
+            duration={3000}
+          />
+        );
+
+      case 'ai-morph-simple':
+        return (
+          <SimpleBottleMorph
+            capturedImage={bottleImage}
+            boundingBox={activeBox}
+            onComplete={handleMorphComplete}
+            duration={2000}
+            preloadedImage={preloadedTransformedImage}
+          />
+        );
+
+      // TODO: Add video-morph case when VideoMorphAnimation component is created
+      case 'video-morph':
+        return (
+          <SimpleBottleMorph
+            capturedImage={bottleImage}
+            boundingBox={activeBox}
+            onComplete={handleMorphComplete}
+            duration={2000}
+            preloadedImage={preloadedTransformedImage}
+          />
+        );
+
+      default:
+        return null;
+    }
   };
 
   return (
@@ -369,27 +507,13 @@ export default function ScanningPage() {
         />
       )}
 
-      {/* Burn Animation (Phase 1) - Using Enhanced Animation with brand-specific shapes */}
-      {bottleImage && animationPhase === 'burn' && (
-        <EnhancedFireAnimation
-          boundingBox={activeBox}
-          imageUrl={bottleImage}
-          segmentationMask={segmentationMask || undefined}
-          detectedBrand={detectedBrand}
-          aspectRatio={aspectRatio}
-        />
-      )}
+      {/* Burn Animation (Phase 1) - Dynamically rendered based on animation mode */}
+      {animationPhase === 'burn' && renderBurnAnimation()}
 
-      {/* Morph Animation (Phase 2 & 3) - Keep visible after completing */}
-      {bottleImage && (animationPhase === 'morph' || animationPhase === 'complete') && useMorphAnimation && (
+      {/* Morph Animation (Phase 2 & 3) - Only for two-phase animation modes */}
+      {(animationPhase === 'morph' || animationPhase === 'complete') && (
         <div className="absolute inset-0 w-full h-full">
-          <SimpleBottleMorph
-            capturedImage={bottleImage}
-            boundingBox={activeBox}
-            onComplete={handleMorphComplete}
-            duration={2000} // 2 second cross-fade
-            preloadedImage={preloadedTransformedImage}
-          />
+          {renderMorphAnimation()}
         </div>
       )}
 

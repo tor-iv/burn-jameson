@@ -61,6 +61,16 @@ interface NormalizedBoundingBox {
 }
 
 /**
+ * Detection mode for test mode scanning
+ */
+export type DetectionMode = 'can' | 'hand';
+
+/**
+ * Object type for test mode detection
+ */
+export type TestObjectType = 'hand' | 'can' | 'sparkling' | null;
+
+/**
  * Mock bottle detection response for test mode with optional hand positioning
  *
  * This creates a realistic detection response that will trigger the Keeper's Heart morph.
@@ -70,9 +80,13 @@ interface NormalizedBoundingBox {
  * - If no handBoundingBox: Uses default center-lower position (realistic bottle placement)
  *
  * @param handBoundingBox - Optional hand position from /api/detect-hand (normalized 0-1 coords)
+ * @param mode - Detection mode ('can' or 'hand') - affects fallback behavior
  * @returns Mock detection response with realistic bottle dimensions
  */
-export function getMockDetectionResponse(handBoundingBox?: NormalizedBoundingBox | null) {
+export function getMockDetectionResponse(
+  handBoundingBox?: NormalizedBoundingBox | null,
+  mode: DetectionMode = 'can'
+) {
   // Calculate bottle position based on hand detection or use default
   let bottlePosition: NormalizedBoundingBox;
 
@@ -128,9 +142,12 @@ export function getMockDetectionResponse(handBoundingBox?: NormalizedBoundingBox
     { x: bottlePosition.x, y: bottlePosition.y + bottlePosition.height },  // Bottom-left
   ];
 
+  // Determine object type based on mode
+  const objectType: TestObjectType = mode === 'hand' ? 'hand' : (handBoundingBox ? 'can' : null);
+
   return {
     detected: true,
-    brand: 'Test Mode - Keeper\'s Heart',
+    brand: `Test Mode - ${mode === 'hand' ? 'Hand' : 'Can/Sparkling'}`,
     confidence: 1.0,
     boundingBox: {
       vertices,
@@ -140,12 +157,14 @@ export function getMockDetectionResponse(handBoundingBox?: NormalizedBoundingBox
     aspectRatio: bottlePosition.height / bottlePosition.width, // Actual aspect ratio
     segmentationMask: null,
     hasBottle: true,
-    hasWhiskey: true,
-    labels: ['Bottle', 'Whiskey', 'Test Mode'],
-    detectedText: 'TEST MODE',
+    hasWhiskey: mode !== 'hand', // Hands don't have whiskey
+    labels: mode === 'hand' ? ['Hand', 'Test Mode'] : ['Can', 'Bottle', 'Test Mode'],
+    detectedText: `TEST MODE - ${mode.toUpperCase()}`,
+    objectType, // NEW: Include object type for scanning page
     validated: true,
     _debug: {
       testMode: true,
+      detectionMode: mode,
       handDetected: !!handBoundingBox,
       logoCount: 0,
       textAnnotationCount: 0,

@@ -178,16 +178,41 @@ export function getBrandSpecificShape(
   const brandLower = brand?.toLowerCase() || '';
 
   // Match brand to specific template
-  if (brandLower.includes('bulleit')) {
-    return generateBulleitShape();
-  } else if (brandLower.includes('maker')) {
-    return generateMakersMarkShape();
-  } else if (brandLower.includes('johnnie')) {
-    return generateJohnnieWalkerShape();
-  } else if (brandLower.includes('jameson')) {
+  // Irish Whiskey
+  if (brandLower.includes('jameson')) {
     return generateJamesonShape();
+  } else if (brandLower.includes('tullamore')) {
+    return generateTullamoreDewShape();
+  } else if (brandLower.includes('bushmills')) {
+    return generateBushmillsShape();
+  } else if (brandLower.includes('redbreast')) {
+    return generateRedbreastShape();
+  } else if (brandLower.includes('writers')) {
+    return generateWritersTearsShape();
+  } else if (brandLower.includes('teeling')) {
+    return generateTeelingShape();
+  }
+  // Scotch Whisky
+  else if (brandLower.includes('johnnie')) {
+    return generateJohnnieWalkerShape();
+  }
+  // American Whiskey (Bourbon/Rye)
+  else if (brandLower.includes('bulleit')) {
+    return generateBulleitShape();
   } else if (brandLower.includes('woodford')) {
     return generateWoodfordShape();
+  } else if (brandLower.includes('maker')) {
+    return generateMakersMarkShape();
+  } else if (brandLower.includes('angel')) {
+    return generateAngelsEnvyShape();
+  } else if (brandLower.includes('high west')) {
+    return generateHighWestShape();
+  } else if (brandLower.includes('michter')) {
+    return generateMichtersShape();
+  } else if (brandLower.includes('knob creek')) {
+    return generateKnobCreekShape();
+  } else if (brandLower.includes('four roses')) {
+    return generateFourRosesShape();
   }
 
   // Fallback: Use aspect ratio to pick generic shape
@@ -542,5 +567,162 @@ function generateWoodfordShape(): string {
     [50, 0],
   ];
 
+  return `polygon(${points.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
+}
+
+/**
+ * Tullamore Dew - Standard Irish whiskey bottle
+ * Characteristics: Similar to Jameson, classic proportions, smooth curves
+ */
+function generateTullamoreDewShape(): string {
+  // Use Jameson shape as base (very similar bottle style)
+  return generateJamesonShape();
+}
+
+/**
+ * Bushmills - Traditional Irish whiskey bottle
+ * Characteristics: Slightly more rounded shoulder than Jameson
+ */
+function generateBushmillsShape(): string {
+  const points: Array<[number, number]> = [
+    // Left side - softer shoulder curves
+    [33, 0], [31, 4], [30, 10], [29, 16], [27, 21],
+    [23, 26], [18, 31], [14, 36], [11, 41], [9, 48],
+    [8, 58], [9, 68], [11, 78], [14, 87], [18, 94], [23, 100],
+    // Bottom
+    [36, 100], [50, 100], [64, 100], [77, 100],
+    // Right side (mirror)
+    [82, 94], [86, 87], [89, 78], [91, 68], [92, 58],
+    [91, 48], [89, 41], [86, 36], [82, 31], [77, 26],
+    [73, 21], [71, 16], [70, 10], [69, 4], [67, 0], [50, 0],
+  ];
+  return `polygon(${points.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
+}
+
+/**
+ * Redbreast - Premium Irish whiskey
+ * Characteristics: Taller neck, elegant proportions, narrow shoulders
+ */
+function generateRedbreastShape(): string {
+  const points: Array<[number, number]> = [
+    [34, 0], [33, 6], [32, 12], [31, 18], [30, 24], [29, 28],
+    [26, 32], [22, 36], [18, 40], [15, 45], [12, 52], [11, 60],
+    [11, 70], [12, 80], [15, 88], [19, 95], [24, 100],
+    [37, 100], [50, 100], [63, 100], [76, 100],
+    [81, 95], [85, 88], [88, 80], [89, 70], [89, 60], [88, 52],
+    [85, 45], [82, 40], [78, 36], [74, 32], [71, 28], [70, 24],
+    [69, 18], [68, 12], [67, 6], [66, 0], [50, 0],
+  ];
+  return `polygon(${points.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
+}
+
+/**
+ * Writers' Tears - Unique teardrop-shaped bottle
+ * Characteristics: Distinctive bulbous body, very rounded
+ */
+function generateWritersTearsShape(): string {
+  const points: Array<[number, number]> = [
+    [35, 0], [33, 5], [32, 12], [30, 18], [27, 24],
+    [22, 30], [16, 36], [12, 42], [9, 48], [7, 55],
+    [6, 64], [7, 73], [9, 81], [13, 88], [18, 94], [24, 100],
+    [35, 100], [50, 100], [65, 100], [76, 100],
+    [82, 94], [87, 88], [91, 81], [93, 73], [94, 64],
+    [93, 55], [91, 48], [88, 42], [84, 36], [78, 30],
+    [73, 24], [70, 18], [68, 12], [67, 5], [65, 0], [50, 0],
+  ];
+  return `polygon(${points.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
+}
+
+/**
+ * Teeling - Modern angular design
+ * Characteristics: Contemporary sharp angles, unique profile
+ */
+function generateTeelingShape(): string {
+  const points: Array<[number, number]> = [
+    [33, 0], [32, 8], [31, 16], [29, 22], [25, 26],
+    [20, 30], [16, 34], [13, 40], [11, 48], [10, 58],
+    [10, 70], [11, 80], [14, 88], [18, 94], [23, 100],
+    [36, 100], [50, 100], [64, 100], [77, 100],
+    [82, 94], [86, 88], [89, 80], [90, 70], [90, 58],
+    [89, 48], [87, 40], [84, 34], [80, 30], [75, 26],
+    [71, 22], [69, 16], [68, 8], [67, 0], [50, 0],
+  ];
+  return `polygon(${points.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
+}
+
+/**
+ * Angel's Envy - Port wine finish bottle
+ * Characteristics: Wine bottle-inspired, elegant curves
+ */
+function generateAngelsEnvyShape(): string {
+  const points: Array<[number, number]> = [
+    [32, 0], [30, 5], [29, 12], [27, 19], [24, 26],
+    [20, 32], [16, 38], [13, 44], [11, 51], [10, 59],
+    [10, 68], [11, 77], [13, 85], [16, 91], [20, 96], [25, 100],
+    [37, 100], [50, 100], [63, 100], [75, 100],
+    [80, 96], [84, 91], [87, 85], [89, 77], [90, 68],
+    [90, 59], [89, 51], [87, 44], [84, 38], [80, 32],
+    [76, 26], [73, 19], [71, 12], [70, 5], [68, 0], [50, 0],
+  ];
+  return `polygon(${points.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
+}
+
+/**
+ * High West - Western-style tall bottle
+ * Characteristics: Tall, narrow, reminiscent of Old West bottles
+ */
+function generateHighWestShape(): string {
+  const points: Array<[number, number]> = [
+    [34, 0], [33, 10], [32, 20], [31, 28], [29, 34],
+    [26, 38], [22, 42], [19, 46], [17, 52], [16, 60],
+    [16, 72], [17, 82], [19, 90], [22, 96], [26, 100],
+    [38, 100], [50, 100], [62, 100], [74, 100],
+    [78, 96], [81, 90], [83, 82], [84, 72], [84, 60],
+    [83, 52], [81, 46], [78, 42], [74, 38], [71, 34],
+    [69, 28], [68, 20], [67, 10], [66, 0], [50, 0],
+  ];
+  return `polygon(${points.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
+}
+
+/**
+ * Michter's - Classic squat bourbon bottle
+ * Characteristics: Shorter, wider, traditional bourbon proportions
+ */
+function generateMichtersShape(): string {
+  const points: Array<[number, number]> = [
+    [32, 0], [30, 8], [28, 16], [26, 22], [22, 28],
+    [17, 34], [13, 40], [10, 46], [8, 54], [8, 64],
+    [9, 74], [11, 83], [14, 90], [18, 96], [23, 100],
+    [35, 100], [50, 100], [65, 100], [77, 100],
+    [82, 96], [86, 90], [89, 83], [91, 74], [92, 64],
+    [92, 54], [90, 46], [87, 40], [83, 34], [78, 28],
+    [74, 22], [72, 16], [70, 8], [68, 0], [50, 0],
+  ];
+  return `polygon(${points.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
+}
+
+/**
+ * Knob Creek - Standard bourbon bottle
+ * Characteristics: Classic bourbon shape, moderate proportions
+ */
+function generateKnobCreekShape(): string {
+  // Similar to Woodford Reserve - classic bourbon
+  return generateWoodfordShape();
+}
+
+/**
+ * Four Roses - Distinctive diamond-shaped label bottle
+ * Characteristics: Unique profile with wider mid-body
+ */
+function generateFourRosesShape(): string {
+  const points: Array<[number, number]> = [
+    [32, 0], [30, 6], [29, 14], [27, 22], [24, 28],
+    [20, 34], [16, 40], [13, 46], [10, 52], [9, 58],
+    [10, 64], [12, 72], [15, 80], [18, 88], [22, 94], [26, 100],
+    [38, 100], [50, 100], [62, 100], [74, 100],
+    [78, 94], [82, 88], [85, 80], [88, 72], [90, 64],
+    [91, 58], [90, 52], [87, 46], [84, 40], [80, 34],
+    [76, 28], [73, 22], [71, 14], [70, 6], [68, 0], [50, 0],
+  ];
   return `polygon(${points.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
 }
