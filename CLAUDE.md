@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 "Burn That Ad" - A mobile-first Next.js application for Keeper's Heart Whiskey's marketing campaign. Consumers scan competitor whiskey bottles with their phone camera, watch an AR "burn" animation, upload a receipt showing they purchased Keeper's Heart, and receive a $5-10 rebate via PayPal Payouts. See [OVERVIEW.md](OVERVIEW.md) for complete project details.
 
-**Status:** 85% complete - Production integration phase. Recent optimizations achieved 40-50% faster API performance (see [PERFORMANCE_OPTIMIZATIONS.md](PERFORMANCE_OPTIMIZATIONS.md)).
+**Status:** 90% complete - Production integration phase. Recent optimizations achieved 40-50% faster API performance (Vision API: ~400ms, Gemini API: ~1.5-2s). See [PERFORMANCE_OPTIMIZATIONS.md](PERFORMANCE_OPTIMIZATIONS.md).
 
 ## Development Commands
 
@@ -120,7 +120,7 @@ Multiple burn animation implementations (experimental):
 - **ThreeBurnAnimation.tsx** - Three.js particle system
 - **BottleMorphAnimation.tsx** / **SimpleBottleMorph.tsx** - Bottle → Keeper's Heart morph using Gemini API
 
-**Current Issue:** Bottle morph animation displaying correctly. See [MORPH_DEBUGGING.md](MORPH_DEBUGGING.md) for details.
+**Active Implementation:** BottleMorphAnimation.tsx / SimpleBottleMorph.tsx using Gemini API for bottle morphing. Optimized to ~1.5-2s response time.
 
 ## Environment Variables
 
@@ -142,13 +142,16 @@ PAYPAL_CLIENT_ID=your_client_id
 PAYPAL_CLIENT_SECRET=your_client_secret
 PAYPAL_ENVIRONMENT=sandbox  # or 'live' for production
 
-# Admin Dashboard (simple password protection)
-NEXT_PUBLIC_ADMIN_PASSWORD=your_secure_password
+# Admin Dashboard (server-side password protection)
+ADMIN_PASSWORD=your_secure_password
 
 # Fraud Prevention Settings (optional - defaults to enabled)
 NEXT_PUBLIC_ENABLE_RECEIPT_HASH_CHECK=true  # Prevent duplicate receipt submissions
 ENABLE_PAYPAL_EMAIL_RATE_LIMIT=true         # Limit payouts per email address
 PAYPAL_EMAIL_RATE_LIMIT_DAYS=30             # Rate limit period in days (default: 30)
+
+# Debug/Test Mode (optional - for development)
+NEXT_PUBLIC_DISABLE_TEST_MODE=false         # Set to 'true' in production to disable test mode features
 ```
 
 **Setup Guides:**
@@ -186,6 +189,32 @@ PAYPAL_EMAIL_RATE_LIMIT_DAYS=30             # Rate limit period in days (default
 **Admin:**
 - [app/admin/page.tsx](app/admin/page.tsx) - Receipt review interface with approve/reject workflow
 
+## Test Mode (Development)
+
+**Quick Access:** Triple-click "How It Works" title on intro page → Enter password: `bob`
+
+Test mode bypasses bottle detection, allowing you to test the morph animation with any photo (hands, tables, etc.). See [TEST_MODE.md](TEST_MODE.md) for complete details.
+
+**Visual Indicators:**
+- Orange "TEST MODE" badge in top-right corner
+- Orange pulsing border on scan page
+- Mock detection response (100% confidence, centered bottle-shaped bounding box)
+
+**Usage:**
+```javascript
+// Enable test mode
+sessionStorage.setItem('kh_test_mode', 'true');
+
+// Check if enabled
+import { isTestModeEnabled } from '@/lib/test-mode';
+if (isTestModeEnabled()) { /* bypass API */ }
+
+// Disable
+sessionStorage.removeItem('kh_test_mode');
+```
+
+**Important:** Test mode does NOT bypass fraud prevention layers (rate limiting, image hashing, session validation). Disable in production via `NEXT_PUBLIC_DISABLE_TEST_MODE=true`.
+
 ## Common Debugging Patterns
 
 **Session Lost Between Pages:**
@@ -206,12 +235,31 @@ PAYPAL_EMAIL_RATE_LIMIT_DAYS=30             # Rate limit period in days (default
 - Convert to pixels: `x * imageWidth`, `y * imageHeight`
 - Use `expandedBoundingBox` for animation overlay (5% larger)
 
+**Mobile Testing:**
+- **Local mobile testing:** Use ngrok (`ngrok http 3000`) to expose localhost to mobile devices
+- **iOS:** Safari 14+ required for camera access (WebRTC)
+- **Android:** Chrome 10+ required for camera access (WebRTC)
+- **Camera permissions:** Check Settings > Safari/Chrome > Camera if access denied
+- **Debug on mobile:** Use Safari/Chrome DevTools remote debugging
+
 **Fraud Prevention Testing:**
 - **Disable receipt duplicate detection:** Set `NEXT_PUBLIC_ENABLE_RECEIPT_HASH_CHECK=false` in `.env.local` (allows same receipt to be uploaded multiple times for testing)
 - **Disable PayPal email rate limiting:** Set `ENABLE_PAYPAL_EMAIL_RATE_LIMIT=false` in `.env.local` (allows multiple payouts to same email for testing)
 - **Check receipt hash:** Query `SELECT image_hash FROM receipts WHERE id = 'xxx'` in Supabase SQL editor
 - **Check email rate limit:** Look for "must wait X days" error message in PayPal payout API response
 - **Production:** Always enable both fraud prevention features (`true`) before launch
+
+**Performance Monitoring:**
+Check server logs for timing data (optimizations implemented):
+```bash
+# Vision API (should be ~400-500ms after optimization)
+[VISION API OPTIMIZATION] Reduced payload: 2847KB → 287KB (90% smaller)
+[VISION API] ✅ Response received in 456ms
+
+# Gemini API (should be ~1500-2000ms after optimization)
+[MORPH-SIMPLE API] ⏱️  Gemini API responded in 1842ms
+```
+**Recent optimizations:** Server-side image compression (Sharp), removed LABEL_DETECTION feature, reduced crop dimensions (512×1024px), switched to Gemini 2.5 Flash-Lite, condensed prompt. See [PERFORMANCE_OPTIMIZATIONS.md](PERFORMANCE_OPTIMIZATIONS.md).
 
 ## Implementation Notes
 

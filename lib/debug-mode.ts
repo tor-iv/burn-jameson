@@ -53,44 +53,91 @@ export function toggleTestMode(password?: string): boolean {
   }
 }
 
+interface NormalizedBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
- * Mock bottle detection response for test mode
- * This creates a realistic detection response that will trigger the Keeper's Heart morph
+ * Mock bottle detection response for test mode with optional hand positioning
  *
- * IMPORTANT: Uses a LARGE bounding box (80% of image) to capture hand/bottle
- * regardless of where user positions their hand in the frame.
- * This ensures proper bottle placement even when hand is off-center.
+ * This creates a realistic detection response that will trigger the Keeper's Heart morph.
+ *
+ * NEW: Supports hand-focused positioning!
+ * - If handBoundingBox provided: Places bottle at hand location (from hand detection API)
+ * - If no handBoundingBox: Uses default center-lower position (realistic bottle placement)
+ *
+ * @param handBoundingBox - Optional hand position from /api/detect-hand (normalized 0-1 coords)
+ * @returns Mock detection response with realistic bottle dimensions
  */
-export function getMockDetectionResponse() {
-  // LARGE bounding box covering 80% of image (10% margin on all sides)
-  // This captures the hand/bottle wherever user positions it
-  const mockBoundingBox = {
-    x: 0.1,     // 10% from left edge
-    y: 0.1,     // 10% from top edge
-    width: 0.8,  // 80% of image width (was 0.4 - too narrow)
-    height: 0.8, // 80% of image height (was 0.7)
+export function getMockDetectionResponse(handBoundingBox?: NormalizedBoundingBox | null) {
+  // Calculate bottle position based on hand detection or use default
+  let bottlePosition: NormalizedBoundingBox;
+
+  if (handBoundingBox && !isNaN(handBoundingBox.x)) {
+    // Hand detected! Position bottle at hand location
+    // Adjust dimensions to be bottle-shaped (narrower, taller)
+    const handCenterX = handBoundingBox.x + handBoundingBox.width / 2;
+    const handCenterY = handBoundingBox.y + handBoundingBox.height / 2;
+
+    // Bottle dimensions: narrower than hand, similar height
+    const bottleWidth = Math.min(0.30, handBoundingBox.width * 0.8); // Max 30% of screen
+    const bottleHeight = Math.min(0.50, handBoundingBox.height * 1.1); // Slightly taller than hand
+
+    bottlePosition = {
+      x: Math.max(0, Math.min(handCenterX - bottleWidth / 2, 1 - bottleWidth)),
+      y: Math.max(0, Math.min(handCenterY - bottleHeight / 2, 1 - bottleHeight)),
+      width: bottleWidth,
+      height: bottleHeight,
+    };
+
+    console.log('[TEST MODE] 🤚 Using hand-detected position:', bottlePosition);
+  } else {
+    // No hand detected - use default center-lower position
+    // This is where someone would typically hold a bottle in frame
+    bottlePosition = {
+      x: 0.35,  // 35% from left (center-ish)
+      y: 0.45,  // 45% from top (lower-center, hand-holding area)
+      width: 0.30,  // 30% width (realistic bottle width)
+      height: 0.45, // 45% height (medium bottle, not too tall)
+    };
+
+    console.log('[TEST MODE] 📍 Using default center-lower position:', bottlePosition);
+  }
+
+  // Create expanded bounding box (20% expansion, matching real detection)
+  const centerX = bottlePosition.x + bottlePosition.width / 2;
+  const centerY = bottlePosition.y + bottlePosition.height / 2;
+  const expandedWidth = bottlePosition.width * 1.20;
+  const expandedHeight = bottlePosition.height * 1.20;
+
+  const expandedBox = {
+    x: Math.max(0, Math.min(centerX - expandedWidth / 2, 1 - expandedWidth)),
+    y: Math.max(0, Math.min(centerY - expandedHeight / 2, 1 - expandedHeight)),
+    width: Math.min(expandedWidth, 1),
+    height: Math.min(expandedHeight, 1),
   };
+
+  // Create vertices for boundingBox (pixel coordinates will be calculated by client)
+  const vertices = [
+    { x: bottlePosition.x, y: bottlePosition.y },  // Top-left
+    { x: bottlePosition.x + bottlePosition.width, y: bottlePosition.y },  // Top-right
+    { x: bottlePosition.x + bottlePosition.width, y: bottlePosition.y + bottlePosition.height },  // Bottom-right
+    { x: bottlePosition.x, y: bottlePosition.y + bottlePosition.height },  // Bottom-left
+  ];
 
   return {
     detected: true,
     brand: 'Test Mode - Keeper\'s Heart',
     confidence: 1.0,
     boundingBox: {
-      vertices: [
-        { x: 0.1, y: 0.1 },  // Top-left
-        { x: 0.9, y: 0.1 },  // Top-right
-        { x: 0.9, y: 0.9 },  // Bottom-right
-        { x: 0.1, y: 0.9 },  // Bottom-left
-      ]
+      vertices,
     },
-    normalizedBoundingBox: mockBoundingBox,
-    expandedBoundingBox: {
-      x: 0.05,    // 5% margin (expanded from 10%)
-      y: 0.05,    // 5% margin
-      width: 0.9,  // 90% coverage (expanded from 80%)
-      height: 0.9, // 90% coverage
-    },
-    aspectRatio: 1.75, // Typical bottle height/width ratio
+    normalizedBoundingBox: bottlePosition,
+    expandedBoundingBox: expandedBox,
+    aspectRatio: bottlePosition.height / bottlePosition.width, // Actual aspect ratio
     segmentationMask: null,
     hasBottle: true,
     hasWhiskey: true,
@@ -99,12 +146,13 @@ export function getMockDetectionResponse() {
     validated: true,
     _debug: {
       testMode: true,
+      handDetected: !!handBoundingBox,
       logoCount: 0,
       textAnnotationCount: 0,
       localizedObjectCount: 1,
       bottleObjectScore: 1.0,
       hasSegmentationMask: false,
-      aspectRatio: '1.75',
+      aspectRatio: (bottlePosition.height / bottlePosition.width).toFixed(2),
     }
   };
 }
