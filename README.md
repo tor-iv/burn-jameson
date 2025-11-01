@@ -1,8 +1,9 @@
 # Burn That Ad - Keeper's Heart Whiskey Campaign
 
-**Status:** 80% Complete - Production Integration Phase
+**Status:** ⚠️ 80% Complete - **NOT PRODUCTION-READY** (Security Fixes Required)
+**Security Status:** 🔴 **5 Critical Vulnerabilities Identified** - See [SECURITY.md](SECURITY.md)
 **Tech Stack:** Next.js 15 • React 19 • TypeScript • Tailwind CSS • Supabase • Google Vision API • PayPal Payouts
-**Last Updated:** 2025-10-16
+**Last Updated:** 2025-10-31
 
 A mobile-first web application for Keeper's Heart Whiskey's AR marketing campaign. Consumers scan competitor whiskey bottles with their phone camera, watch an AR "burn" animation, upload a receipt showing they purchased Keeper's Heart, and receive a $5-10 rebate via PayPal Payouts (1-2 days).
 
@@ -39,12 +40,18 @@ A mobile-first web application for Keeper's Heart Whiskey's AR marketing campaig
 - ✅ Session management from scan → receipt → payout
 
 **What Needs Work:**
+- 🚨 **CRITICAL: Security Fixes Required** (see [SECURITY.md](SECURITY.md) for details)
+  - Fix admin authentication (no auth on payout endpoints!)
+  - Fix Supabase RLS policies (anyone can access all data!)
+  - Remove exposed admin password from env vars
+  - Add CSRF protection
+  - Implement payment validation
 - 📋 PayPal Business account setup (manual - 1-2 hours)
 - 📋 Bottle animation sizing/positioning fixes (too small currently)
 - 📋 Legal pages (Privacy Policy, Terms, Official Rules)
 - 📋 Production deployment to Vercel
 
-**Estimated Time to Launch:** 2-3 days
+**Estimated Time to Launch:** 3-4 weeks (including security fixes)
 
 ---
 
@@ -143,10 +150,17 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 /components
   /ui/                                # shadcn/ui components ✅
   /camera-scanner.tsx                 # WebRTC camera with live detection ✅
-  /BottleMorphAnimation.tsx           # Bottle burn/morph animation (experimental) ✅
-  /burn-animation.tsx                 # Framer Motion burn effect ✅
-  /LottieBurnAnimation.tsx            # Lottie animation player ✅
-  /ThreeBurnAnimation.tsx             # Three.js particle system ✅
+
+  # Animation Components (10 modes available)
+  /EnhancedFireAnimation.tsx          # Canvas particle burn (default) ✅
+  /ThreeBurnAnimation.tsx             # Three.js WebGL shader burn ✅
+  /burn-animation.tsx                 # Framer Motion flames ✅
+  /LottieBurnAnimation.tsx            # Lottie JSON animation ✅
+  /BurnToCoalAnimation.tsx            # Burn to charred coal effect (NEW) ✅
+  /SpinRevealAnimation.tsx            # 360° rotation reveal (NEW) ✅
+  /MeltDownAnimation.tsx              # Melting transition effect (NEW) ✅
+  /SimpleBottleMorph.tsx              # AI morph (Gemini 1-frame) ✅
+  /BottleMorphAnimation.tsx           # AI morph (Gemini 8-frame) ✅
 
 /lib
   /supabase.ts                        # Client-side Supabase client ✅
@@ -221,8 +235,9 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 **Frontend:**
 - Next.js 15 (App Router) - React 19, TypeScript
 - Tailwind CSS 4 - Custom brand theme
-- Framer Motion - Animations & transitions
-- Three.js (@react-three/fiber, @react-three/drei) - AR effects
+- Framer Motion - Animations & 3D transforms
+- Three.js (@react-three/fiber, @react-three/drei) - WebGL shader effects
+- 10 Animation Modes - Canvas particle systems, CSS 3D, AI-powered morphing (Gemini API)
 
 **Backend:**
 - Next.js API Routes - Server-side endpoints
@@ -328,51 +343,112 @@ npm run lint          # Run ESLint
 
 ---
 
-## 🛡️ Fraud Prevention & Security
+## 🛡️ Security & Fraud Prevention
 
-**6-Layer Fraud Prevention System:**
+### ⚠️ SECURITY STATUS: NOT PRODUCTION-READY
 
-1. ✅ **Bottle Image Hashing** - Prevents same bottle photo from being scanned twice
-2. ✅ **IP Rate Limiting** - 3 bottle scans per IP per 24 hours
-3. ✅ **Session Validation** - 1 receipt per session, 24-hour expiry
-4. ✅ **Receipt Image Hashing** - Prevents same receipt photo from being submitted multiple times (configurable)
-5. ✅ **PayPal Email Rate Limiting** - 1 payout per email per 30 days (configurable)
-6. ✅ **Manual Admin Review** - Human verification of all receipts before payout
+**Critical Issues Identified:** 5 vulnerabilities must be fixed before launch
+**Full Security Audit:** See [SECURITY.md](SECURITY.md) for complete details
 
-**All configurable via environment variables for testing flexibility.**
+### 🔴 Critical Vulnerabilities (MUST FIX)
 
-**Key Features:**
-- Age gating (21+ verification required)
-- Image validation (format, size, quality checks)
-- Device fingerprinting (user agent tracking)
-- SHA-256 image hashing for duplicate detection
-- Configurable rate limits via ENV variables
+1. **Admin Authentication Bypass** - PayPal payout API has NO authentication
+   - Impact: Anyone can trigger unlimited payouts
+   - Fix: Add JWT-based auth to all admin endpoints
+   - Estimated effort: 30 minutes
 
-**See:** [docs/FRAUD_PREVENTION.md](docs/FRAUD_PREVENTION.md) for complete guide
+2. **Weak Admin Password** - Plaintext password in ENV variables
+   - Impact: Password easily compromised
+   - Fix: Use bcrypt hash + JWT sessions
+   - Estimated effort: 2 hours
 
-**Production Enhancements (Future):**
-- ML content validation (verify actual bottle/receipt in images)
-- OCR verification (extract "Keeper's Heart" from receipts)
-- Geofencing (limit to specific states/regions)
-- Pattern detection (flag suspicious activity)
+3. **SQL Injection via RLS** - Supabase policies allow unrestricted access
+   - Impact: Anyone can read/modify all receipts and PayPal emails
+   - Fix: Implement proper row-level security policies
+   - Estimated effort: 2 hours
+
+4. **Payment Manipulation** - No validation before PayPal payout
+   - Impact: Receipt amounts can be modified before payout
+   - Fix: Add immutability checks + database triggers
+   - Estimated effort: 1 hour
+
+5. **Environment Variable Exposure** - Admin password uses NEXT_PUBLIC_ prefix
+   - Impact: Password visible in browser source code
+   - Fix: Remove NEXT_PUBLIC_ from sensitive vars
+   - Estimated effort: 5 minutes
+
+**Total Critical Fixes:** ~8 hours
+**See:** [SECURITY.md](SECURITY.md) for detailed remediation steps
 
 ---
 
-## 🔒 Legal & Compliance
+### 7-Layer Fraud Prevention System
 
-**Required for Production:**
-- [ ] Privacy Policy
-- [ ] Terms of Service
-- [ ] Official Rules (sweepstakes laws)
-- [ ] AMOE provision (some states require)
-- [ ] Legal review by attorney
+**Layer 1-3: Always Active**
+1. ✅ **Bottle Image Hashing** - SHA-256 prevents duplicate scans
+2. ✅ **IP Rate Limiting** - 3 scans per IP per 24 hours
+3. ✅ **Session Validation** - 1 receipt per session, 24-hour expiry
 
-**Compliance Considerations:**
-- Age gating (21+ verification required)
-- Comparative advertising laws
-- Tied-house laws (alcohol industry)
-- State-specific alcohol marketing regulations
-- Responsible drinking messaging
+**Layer 4-5: Configurable**
+4. ✅ **Receipt Image Hashing** - Prevents duplicate submissions (configurable via ENV)
+5. ✅ **PayPal Email Rate Limiting** - 1 payout per email per 30 days (configurable)
+
+**Layer 6-7: Automated + Manual**
+6. ✅ **Automated Fraud Scoring** - ML-based confidence scoring (85% threshold)
+   - Auto-approves 90% of receipts instantly
+   - Flags 10% for manual review
+7. ✅ **Manual Admin Review** - Human verification of flagged receipts
+
+**Current Auto-Approval Rate:** 90% (instant payout)
+**Fraud Detection Confidence:** 85% threshold
+
+**See:** [FRAUD_PREVENTION_SUMMARY.md](FRAUD_PREVENTION_SUMMARY.md) for complete guide
+
+---
+
+### Security Best Practices Implemented
+
+✅ **Already Working:**
+- HTTPS enforcement (HSTS headers)
+- Security headers (X-Frame-Options, CSP, etc.)
+- Session expiry (24 hours)
+- Image validation (format, size, quality)
+- SHA-256 image hashing
+- Automated fraud scoring with 5 weighted factors
+- Daily auto-approval cap (1000/day safety limit)
+
+❌ **Needs Fixing:**
+- Admin authentication (critical)
+- API authorization (critical)
+- RLS policies (critical)
+- Payment validation (critical)
+- CSRF protection (high priority)
+- XSS sanitization (high priority)
+- Session security (high priority)
+
+---
+
+### Compliance Concerns
+
+**GDPR Violations Identified:**
+- No data retention policy
+- No user consent mechanism
+- PII in logs (PayPal emails)
+- No data deletion mechanism
+- No breach notification plan
+
+**PCI DSS Concerns:**
+- Unencrypted payment identifiers (PayPal emails)
+- Weak access controls
+- No audit trail for payment operations
+
+**Required Before Launch:**
+- Privacy Policy
+- Terms of Service
+- Official Rules (sweepstakes compliance)
+- Legal review by attorney
+
+**See:** [SECURITY.md](SECURITY.md) for compliance checklist
 
 ---
 

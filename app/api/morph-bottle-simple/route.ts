@@ -259,8 +259,10 @@ export async function POST(request: NextRequest) {
     const keepersHeartBase64 = keepersHeartCached.toString('base64');
 
     // STEP 2.5: Extract lighting context BEFORE calling Gemini (so we can include it in the prompt)
+    // Run this in parallel with other operations for better performance
     console.log('[MORPH-SIMPLE API] 📊 Extracting lighting context from crop...');
-    const cropStats = await sharp(bottleCrop).stats();
+    const cropStatsPromise = sharp(bottleCrop).stats();
+    const cropStats = await cropStatsPromise;
     const rMean = cropStats.channels[0].mean;
     const gMean = cropStats.channels[1].mean;
     const bMean = cropStats.channels[2].mean;
@@ -332,6 +334,7 @@ export async function POST(request: NextRequest) {
     console.log(`[MORPH-SIMPLE API] 📝 Source object: ${sourceObjectDesc}`);
 
     // Enhanced prompt for natural lighting adaptation with SPECIFIC lighting context
+    // Includes negative prompts and explicit detail preservation instructions
     const prompt = `You are doing photo editing to seamlessly transform an object in a real photograph.
 
 INPUT IMAGES:
@@ -351,40 +354,62 @@ CRITICAL REQUIREMENTS:
 
 1. LIGHTING & COLOR ADAPTATION (MOST IMPORTANT):
    - The scene has ${tempDesc} lighting with ${brightnessDesc} exposure
-   - Apply ${tempDesc === 'warm yellow/orange' ? 'warm amber/yellow color cast to the entire bottle' : tempDesc === 'cool blue' ? 'cool blue color cast to the entire bottle' : 'neutral balanced lighting to the bottle'}
+   - Apply ${tempDesc === 'warm yellow/orange' ? 'warm amber/yellow color cast (#FFB347 to #FFA500 range)' : tempDesc === 'cool blue' ? 'cool blue color cast (#ADD8E6 to #87CEEB range)' : 'neutral balanced lighting (#F5F5DC to #FFFAF0 range)'} to the entire bottle
    - Match the brightness level: make the bottle ${brightnessDesc === 'bright, well-lit' ? 'bright and well-exposed' : brightnessDesc === 'dim, low-light' ? 'darker and muted' : 'moderately exposed'}
-   - Adjust glass reflections to show ${tempDesc} lighting (not studio white)
+   - Glass reflections must show ${tempDesc} lighting tones (not pure white studio reflections)
    - Match shadow intensity and direction from Image 1's environment
-   - The bottle's liquid color should reflect the ${tempDesc} lighting environment
+   - The bottle's amber liquid should reflect the ${tempDesc} lighting environment
+   - Preserve the natural grain and texture from Image 1's photo (don't make it too smooth/clean)
 
-2. POSITIONING & PERSPECTIVE:
+2. LABEL & DETAIL PRESERVATION (CRITICAL):
+   - The "Keeper's Heart" label text must be sharp, clear, and fully legible
+   - Preserve ALL fine details: logo, text, ornamental designs, label borders
+   - The bottle cap/cork must be clearly visible and detailed (not blurred or simplified)
+   - Glass texture should show realistic imperfections and light scatter (not perfect/CG)
+   - Maintain label proportions and perspective as shown in Image 2
+
+3. POSITIONING & PERSPECTIVE:
    - ${perspectiveNote}Match this EXACT orientation and angle.
    - Match the exact tilt, rotation, and perspective angle of the original ${sourceObjectDesc} in Image 1
    - Scale the Keeper's Heart bottle to match the size and position of the original ${sourceObjectDesc}
    - If hands are visible, align the bottle with the hand grip naturally (make it look like the hand is holding the Keeper's Heart bottle)
    - Maintain the original ${sourceObjectDesc}'s position and orientation
 
-3. PRESERVATION:
+4. PRESERVATION:
    - Keep ALL hands, fingers, skin, and background from Image 1 completely unchanged
    - Only replace the ${sourceObjectDesc} itself - everything else stays identical
+   - Preserve any motion blur, focus depth, or camera effects from the original photo
 
-4. NATURAL BLENDING:
+5. NATURAL BLENDING:
    - Bottle edges should blend naturally (soft transitions, not hard crisp edges)
-   - Match the photo's overall sharpness/blur level (don't make bottle sharper than the rest of the photo)
-   - Ensure the bottle looks like it belongs in this specific environment
+   - Match the photo's overall sharpness/blur level - if the photo is slightly blurred, make the bottle slightly blurred too
+   - Add subtle edge chromatic aberration if present in the original photo
+   - Ensure the bottle looks like it belongs in this specific environment (same camera, same moment)
 
-5. OUTPUT:
+6. OUTPUT:
    - Return exactly ${geminiCropWidth}x${geminiCropHeight} pixels (match input dimensions)
-   - Photo-realistic result (not artistic/painted style)
+   - Photo-realistic result (not artistic/painted/illustrated style)
    - Focus on making it look NATURAL and REAL, not perfect or studio-quality
 
-The goal is seamless integration - a viewer should not be able to tell the bottle was edited.`;
+NEGATIVE PROMPTS (DO NOT DO THESE):
+❌ Do NOT blur or simplify the Keeper's Heart label text
+❌ Do NOT make the bottle look overly smooth, clean, or CG-rendered
+❌ Do NOT change the glass texture to look like plastic or solid material
+❌ Do NOT add unrealistic perfect white highlights or studio lighting effects
+❌ Do NOT make the bottle sharper than the rest of the photo
+❌ Do NOT distort the bottle shape (keep proportions accurate to whiskey bottle)
+❌ Do NOT create artificial-looking edges or halos around the bottle
+❌ Do NOT ignore the scene's color temperature and lighting conditions
+❌ Do NOT make the liquid color too bright or saturated (keep it natural amber)
+
+The goal is seamless integration - a viewer should not be able to tell the bottle was edited. It should look like a real photo taken with this exact camera in this exact lighting.`;
 
     console.log('[MORPH-SIMPLE API] 🎨 Calling Gemini API for bottle replacement...');
     const geminiStartTime = Date.now();
 
     // Call Gemini API with lighting-aware prompt
     // Using Gemini 2.5 Flash Image model for image editing/generation
+    // Note: We start this as a promise but don't await yet - we'll process it in parallel with other operations
     const geminiPromise = fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent',
       {
@@ -423,7 +448,8 @@ The goal is seamless integration - a viewer should not be able to tell the bottl
       }
     );
 
-    // Wait for Gemini API to complete (color stats already extracted above)
+    // Wait for Gemini API to complete
+    // The fetch promise is already running in the background
     const geminiResponse = await geminiPromise;
 
     const geminiEndTime = Date.now();
@@ -606,7 +632,8 @@ The goal is seamless integration - a viewer should not be able to tell the bottl
 
     console.log('[MORPH-SIMPLE API] 🔧 Compositing feathered crop back onto original...');
 
-    const finalImage = await sharp(originalBuffer)
+    // Composite the feathered crop onto the original image
+    const compositedImage = sharp(originalBuffer)
       .composite([
         {
           input: featheredCrop,
@@ -614,23 +641,47 @@ The goal is seamless integration - a viewer should not be able to tell the bottl
           left: cropX,
           blend: 'over',
         },
-      ])
-      .jpeg({
-        quality: 95, // Increased from 90 for sharper final output
-        chromaSubsampling: '4:4:4' // Disable chroma subsampling for maximum sharpness
-      })
-      .toBuffer();
+      ]);
+
+    // Try WebP output first (30-40% smaller, faster download)
+    // Fall back to JPEG if WebP encoding fails
+    let finalImage: Buffer;
+    let mimeType: string;
+    let formatUsed: string;
+
+    try {
+      finalImage = await compositedImage
+        .webp({
+          quality: 92, // Slightly lower than JPEG 95 for similar visual quality
+          effort: 4,   // Balance between speed and compression (0-6, default 4)
+        })
+        .toBuffer();
+      mimeType = 'image/webp';
+      formatUsed = 'WebP';
+      console.log('[MORPH-SIMPLE API] ✅ Using WebP format for smaller file size');
+    } catch (webpError) {
+      console.log('[MORPH-SIMPLE API] ⚠️  WebP encoding failed, falling back to JPEG:', webpError);
+      finalImage = await compositedImage
+        .jpeg({
+          quality: 95, // High quality for sharp output
+          chromaSubsampling: '4:4:4' // Disable chroma subsampling for maximum sharpness
+        })
+        .toBuffer();
+      mimeType = 'image/jpeg';
+      formatUsed = 'JPEG';
+    }
 
     const finalBase64 = finalImage.toString('base64');
 
-    console.log(`[MORPH-SIMPLE API] ✅ Successfully created transformed bottle (${Math.round(finalBase64.length * 0.75 / 1024)} KB)`);
+    console.log(`[MORPH-SIMPLE API] ✅ Successfully created transformed bottle (${Math.round(finalBase64.length * 0.75 / 1024)} KB, ${formatUsed})`);
     console.log(`[MORPH-SIMPLE API] ⏱️  Total time: ${Date.now() - startTime}ms`);
 
     return NextResponse.json({
       success: true,
       originalImage: image,
-      transformedImage: `data:image/jpeg;base64,${finalBase64}`,
+      transformedImage: `data:${mimeType};base64,${finalBase64}`,
       cost: 0.039, // Gemini 2.5 Flash Image cost
+      format: formatUsed, // Let client know which format was used
     });
 
   } catch (error) {

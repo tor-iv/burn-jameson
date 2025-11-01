@@ -13,7 +13,10 @@ export type AnimationMode =
   | 'lottie'             // Lottie JSON-based animation
   | 'ai-morph-full'      // Gemini API 8-frame morph sequence ($0.31 per use)
   | 'ai-morph-simple'    // Gemini API 1-frame crossfade ($0.04 per use)
-  | 'video-morph';       // Video-based morph (requires video assets)
+  | 'video-morph'        // Video-based morph (requires video assets)
+  | 'burn-to-coal'       // Burn effect ending with charred coal/ash appearance
+  | 'spin-reveal'        // 360° rotation revealing Keeper's Heart at the end
+  | 'melt-down';         // Competitor bottle melts downward like wax or ice
 
 export interface AnimationModeConfig {
   id: AnimationMode;
@@ -107,6 +110,39 @@ export const ANIMATION_MODES: Record<AnimationMode, AnimationModeConfig> = {
     performance: 'high',
     requiresAssets: true, // Requires video files
     enabled: false, // Disabled until videos are available
+  },
+  'burn-to-coal': {
+    id: 'burn-to-coal',
+    name: 'Burn to Coal',
+    description: 'Bottle burns into charred coal, then crumbles to reveal Keeper\'s Heart underneath.',
+    component: 'BurnToCoalAnimation',
+    estimatedDuration: 6000,
+    costPerUse: 0,
+    performance: 'high',
+    requiresAssets: false,
+    enabled: true,
+  },
+  'spin-reveal': {
+    id: 'spin-reveal',
+    name: 'Spin Reveal',
+    description: '360° rotation animation revealing Keeper\'s Heart bottle at the end. Smooth and elegant.',
+    component: 'SpinRevealAnimation',
+    estimatedDuration: 4000,
+    costPerUse: 0,
+    performance: 'high',
+    requiresAssets: false,
+    enabled: true,
+  },
+  'melt-down': {
+    id: 'melt-down',
+    name: 'Melt Down',
+    description: 'Competitor bottle melts downward like wax or ice with dripping effects. Satisfying destruction.',
+    component: 'MeltDownAnimation',
+    estimatedDuration: 4500,
+    costPerUse: 0,
+    performance: 'medium',
+    requiresAssets: false,
+    enabled: true,
   },
 };
 

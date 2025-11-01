@@ -11,6 +11,16 @@ interface PayoutRequest {
 }
 
 export async function POST(request: NextRequest) {
+  // 🚨 CRITICAL SECURITY VULNERABILITY - NO AUTHENTICATION!
+  // TODO: Add authentication check before allowing payouts
+  // Anyone can call this endpoint and trigger payouts to any approved receipt!
+  //
+  // FIX: Add this line at the top of the function:
+  //   await verifyAdminAuth(request);
+  //
+  // See: SECURITY.md - Vulnerability #2 (Admin API Endpoints - No Authorization Check)
+  // See: docs/SECURITY_ROADMAP.md - Phase 1.2 (API Endpoint Authorization)
+
   try {
     const { receiptId, paypalEmail, amount }: PayoutRequest = await request.json();
 

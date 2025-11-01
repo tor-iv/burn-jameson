@@ -38,6 +38,18 @@ const SimpleBottleMorph = dynamic(() => import("@/components/SimpleBottleMorph")
   ssr: false,
 });
 
+const BurnToCoalAnimation = dynamic(() => import("@/components/BurnToCoalAnimation"), {
+  ssr: false,
+});
+
+const SpinRevealAnimation = dynamic(() => import("@/components/SpinRevealAnimation"), {
+  ssr: false,
+});
+
+const MeltDownAnimation = dynamic(() => import("@/components/MeltDownAnimation"), {
+  ssr: false,
+});
+
 interface BoundingBox {
   vertices?: Array<{ x: number; y: number }>;
 }
@@ -423,6 +435,35 @@ export default function ScanningPage() {
             segmentationMask={segmentationMask || undefined}
             detectedBrand={detectedBrand}
             aspectRatio={aspectRatio}
+          />
+        );
+
+      // New animation modes
+      case 'burn-to-coal':
+        return (
+          <BurnToCoalAnimation
+            boundingBox={activeBox}
+            imageUrl={bottleImage}
+            detectedBrand={detectedBrand}
+            onComplete={() => {}}
+          />
+        );
+
+      case 'spin-reveal':
+        return (
+          <SpinRevealAnimation
+            boundingBox={activeBox}
+            imageUrl={bottleImage}
+            onComplete={() => {}}
+          />
+        );
+
+      case 'melt-down':
+        return (
+          <MeltDownAnimation
+            boundingBox={activeBox}
+            imageUrl={bottleImage}
+            onComplete={() => {}}
           />
         );
 

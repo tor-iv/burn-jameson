@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
-// Admin password stored server-side only (NOT NEXT_PUBLIC_!)
+// 🚨 CRITICAL SECURITY VULNERABILITIES IN THIS FILE:
+// 1. Plaintext password comparison (timing attack vulnerable)
+// 2. Weak session token (base64 only, not signed/encrypted)
+// 3. No rate limiting (brute force attacks possible)
+// 4. No account lockout mechanism
+// 5. No authentication attempt logging
+// 6. Weak default password ('admin123')
+//
+// TODO: Complete rewrite required. See SECURITY.md - Vulnerability #1
+// See: docs/SECURITY_ROADMAP.md - Phase 1.1 (Admin Authentication System)
+
+// ❌ INSECURE: Plaintext password (should be bcrypt hash!)
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 
 // Session token expiry (24 hours)
@@ -25,14 +36,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ❌ INSECURE: Non-constant-time comparison (timing attack vulnerable!)
+    // TODO: Replace with bcrypt.compare() for constant-time comparison
     // Verify password (server-side only - password never exposed to client!)
     if (password !== ADMIN_PASSWORD) {
+      // TODO: Add failed attempt tracking and rate limiting here
+      // TODO: Add logging (IP, timestamp, attempt count)
       return NextResponse.json(
         { authenticated: false, error: 'Invalid password' },
         { status: 401 }
       );
     }
 
+    // ❌ INSECURE: Base64-encoded token (not signed, easily forged!)
+    // TODO: Replace with JWT signed token using jsonwebtoken library
     // Create session token (simple timestamp-based for MVP)
     const sessionToken = Buffer.from(
       JSON.stringify({

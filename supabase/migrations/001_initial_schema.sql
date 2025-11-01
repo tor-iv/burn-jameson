@@ -41,29 +41,52 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE receipts ENABLE ROW LEVEL SECURITY;
 
+-- ============================================
+-- 🚨 CRITICAL SECURITY VULNERABILITY - INSECURE RLS POLICIES!
+-- ============================================
+-- ALL policies below use "USING (true)" which allows UNRESTRICTED ACCESS!
+-- This means ANY user can read/modify ANY data in the database!
+--
+-- IMPACT:
+-- - Anyone can view ALL receipts (including PayPal emails, amounts)
+-- - Anyone can modify receipt statuses to 'approved' or 'paid'
+-- - Anyone can change payout amounts before processing
+-- - Complete data breach of all user PII
+--
+-- FIX REQUIRED: See supabase/migrations/005_fix_rls_policies.sql
+-- See: SECURITY.md - Vulnerability #3 (SQL Injection via RLS)
+-- See: docs/SECURITY_ROADMAP.md - Phase 1.3 (Fix Supabase RLS Policies)
+-- ============================================
+
+-- ❌ INSECURE: Allows viewing ALL users!
 -- RLS Policies for users table
 CREATE POLICY "Users can view their own data"
     ON users FOR SELECT
     USING (true);
 
+-- ❌ INSECURE: Allows inserting as ANY user!
 CREATE POLICY "Users can insert their own data"
     ON users FOR INSERT
     WITH CHECK (true);
 
+-- ❌ INSECURE: Allows viewing ALL scans!
 -- RLS Policies for scans table
 CREATE POLICY "Anyone can view scans"
     ON scans FOR SELECT
     USING (true);
 
+-- ❌ INSECURE: Allows creating scans for ANY session!
 CREATE POLICY "Anyone can create scans"
     ON scans FOR INSERT
     WITH CHECK (true);
 
+-- ❌ INSECURE: Policy name says "own receipts" but USING (true) allows ALL receipts!
 -- RLS Policies for receipts table
 CREATE POLICY "Users can view their own receipts"
     ON receipts FOR SELECT
     USING (true);
 
+-- ❌ INSECURE: Allows creating receipts for ANY session!
 CREATE POLICY "Users can create receipts"
     ON receipts FOR INSERT
     WITH CHECK (true);

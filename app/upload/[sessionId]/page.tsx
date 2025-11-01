@@ -22,7 +22,14 @@ export default function UploadPage() {
   const [receiptValidation, setReceiptValidation] = useState<{
     isValid: boolean;
     hasKeepersHeart: boolean;
+    hasReceiptKeywords: boolean;
+    detectedText: string;
+    matchedKeywords: string[];
     errors: string[];
+  } | null>(null);
+  const [fraudCheckData, setFraudCheckData] = useState<{
+    isLikelyRealPhoto: boolean;
+    warnings: string[];
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,10 +78,25 @@ export default function UploadPage() {
           setReceiptValidation({
             isValid: result.isValid,
             hasKeepersHeart: result.hasKeepersHeart,
+            hasReceiptKeywords: result.hasReceiptKeywords,
+            detectedText: result.detectedText,
+            matchedKeywords: result.matchedKeywords,
             errors: result.errors || [],
+          });
+          // Also capture fraud check data (from validate-image response)
+          setFraudCheckData({
+            isLikelyRealPhoto: true, // Default to true if validation succeeded
+            warnings: [],
           });
         } else {
           console.error('Receipt validation failed:', result.error);
+          // Capture fraud warnings if validation failed
+          if (result.errors) {
+            setFraudCheckData({
+              isLikelyRealPhoto: false,
+              warnings: result.errors,
+            });
+          }
         }
       } catch (error) {
         console.error('Receipt validation error:', error);
@@ -116,12 +138,12 @@ export default function UploadPage() {
     receiptValidation?.isValid;
 
   const handleSubmit = async () => {
-    if (!isFormValid || !receiptImage) return;
+    if (!isFormValid || !receiptImage || !receiptValidation || !fraudCheckData) return;
 
     setIsSubmitting(true);
 
     try {
-      // Upload receipt to Supabase
+      // Step 1: Upload receipt to Supabase
       const result = await saveReceipt(
         sessionId,
         receiptImage,
@@ -132,7 +154,50 @@ export default function UploadPage() {
         throw new Error(result.error || 'Upload failed');
       }
 
-      router.push(`/confirmation/${sessionId}`);
+      // Step 2: Trigger auto-approval check
+      // Get the receipt ID from Supabase (we need to query it)
+      const { supabase } = await import('@/lib/supabase');
+      const { data: receipt } = await supabase
+        .from('receipts')
+        .select('id')
+        .eq('session_id', sessionId)
+        .single();
+
+      if (!receipt) {
+        throw new Error('Receipt not found after upload');
+      }
+
+      const autoApprovalResponse = await fetch('/api/auto-approve-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          receiptId: receipt.id,
+          validationData: {
+            hasKeepersHeart: receiptValidation.hasKeepersHeart,
+            hasReceiptKeywords: receiptValidation.hasReceiptKeywords,
+            detectedText: receiptValidation.detectedText,
+            matchedKeywords: receiptValidation.matchedKeywords,
+            errors: receiptValidation.errors,
+          },
+          fraudCheckData: {
+            isLikelyRealPhoto: fraudCheckData.isLikelyRealPhoto,
+            warnings: fraudCheckData.warnings,
+          },
+        }),
+      });
+
+      const autoApprovalResult = await autoApprovalResponse.json();
+
+      if (autoApprovalResult.autoApproved && autoApprovalResult.payoutSuccess) {
+        // AUTO-APPROVED! Show success immediately
+        router.push(`/success/${sessionId}?autoApproved=true&amount=${autoApprovalResult.amount}`);
+      } else if (autoApprovalResult.requiresManualReview) {
+        // Flagged for review - show confirmation page
+        router.push(`/confirmation/${sessionId}?manualReview=true`);
+      } else {
+        // Fallback to confirmation page
+        router.push(`/confirmation/${sessionId}`);
+      }
     } catch (error) {
       console.error("Upload error:", error);
       alert(error instanceof Error ? error.message : "Failed to upload. Please try again.");
