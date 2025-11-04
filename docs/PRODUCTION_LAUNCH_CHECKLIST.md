@@ -797,6 +797,9 @@ Your app is now live at **https://burnthatad.com** with:
 - Adjust confidence threshold as needed
 - Scale PayPal account limits if needed
 
+**Optional Enhancements:**
+- **Animation Control:** Add URL parameter (`?animation=coal`) or admin UI toggle to switch between fire/coal animations without redeploying (currently requires env var change + server restart)
+
 ---
 
 **Questions or issues?** See [PAYPAL_PRODUCTION_READY.md](PAYPAL_PRODUCTION_READY.md) for additional troubleshooting.

@@ -131,21 +131,46 @@ Two client patterns in use:
 
 ### Animation System
 
-Multiple burn animation implementations (experimental):
+The app uses a **flexible animation switcher** that allows changing animations via environment variable while preserving all shared logic (bottle detection, bounding box, morph preload, transformation).
 
-- **burn-animation.tsx** - Framer Motion-based burn effect
-- **LottieBurnAnimation.tsx** - Lottie animation player
-- **GifBurnAnimation.tsx** - GIF-based animation
-- **ThreeBurnAnimation.tsx** - Three.js particle system
-- **BottleMorphAnimation.tsx** / **SimpleBottleMorph.tsx** - Bottle → Keeper's Heart morph using Gemini API
+**Architecture:**
+- [components/AnimationSwitcher.tsx](components/AnimationSwitcher.tsx) - Dynamic animation loader based on `NEXT_PUBLIC_ANIMATION_TYPE`
+- [lib/animation-config.ts](lib/animation-config.ts) - Animation configuration system with metadata
+- [types/animations.ts](types/animations.ts) - Shared type definitions (`BurnAnimationProps`, `MorphAnimationProps`)
 
-**Current Issue:** Bottle morph animation displaying correctly. See [MORPH_DEBUGGING.md](MORPH_DEBUGGING.md) for details.
+**Animation Types (set via `NEXT_PUBLIC_ANIMATION_TYPE`):**
+
+1. **`fire` (default)** - Classic fire burn effect
+   - Burn: [EnhancedFireAnimation](components/EnhancedFireAnimation.tsx) - 6-second canvas fire with embers, ash, smoke particles
+   - Morph: [SimpleBottleMorph](components/SimpleBottleMorph.tsx) - 2-second cross-fade using Gemini API
+
+2. **`coal`** - Coal growth and charring effect
+   - Burn: [CoalGrowthAnimation](components/CoalGrowthAnimation.tsx) - 6-second coal growth with 4 phases (growth, char, ember, crumble)
+   - Morph: [SimpleBottleMorph](components/SimpleBottleMorph.tsx) - 2-second cross-fade using Gemini API
+
+**Other Available Animations (not in switcher):**
+- [CanvasFireAnimation](components/CanvasFireAnimation.tsx) - Slower 10-second canvas fire
+- [ThreeBurnAnimation](components/ThreeBurnAnimation.tsx) - WebGL shader-based fire (5 seconds)
+- [LottieBurnAnimation](components/LottieBurnAnimation.tsx) - Lottie JSON animation player
+- [GifBurnAnimation](components/GifBurnAnimation.tsx) - GIF-based animation
+- [burn-animation.tsx](components/burn-animation.tsx) - Simple Framer Motion flames
+- [BottleMorphAnimation](components/BottleMorphAnimation.tsx) - Multi-frame morph (expensive, 3-8 API calls)
+
+**Shared Logic (unchanged across animations):**
+- Bounding box calculation: `normalizeFromRaw()`, `expandBoundingBox()`, `FALLBACK_BOX`
+- Session management and data loading from sessionStorage
+- Morph image preloading during burn phase (calls `/api/morph-bottle-simple`)
+- Two-phase timing: 6s burn → 2s morph → continue button
+- Navigation flow to success page
 
 ## Environment Variables
 
 Copy [.env.example](.env.example) to `.env.local`:
 
 ```bash
+# Animation Type (controls which animation plays during bottle scan)
+NEXT_PUBLIC_ANIMATION_TYPE=fire  # Options: 'fire' or 'coal' (default: 'fire')
+
 # Supabase (required for database/storage)
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key

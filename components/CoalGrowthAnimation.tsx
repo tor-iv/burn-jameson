@@ -1,22 +1,18 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { BurnAnimationProps } from '@/types/animations';
 
-interface CoalGrowthAnimationProps {
-  boundingBox: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  imageUrl: string;
+// CoalGrowthAnimation accepts the standard BurnAnimationProps
+// plus optional extra props for advanced features
+interface CoalGrowthAnimationProps extends BurnAnimationProps {
+  // Extra optional props (not in standard interface)
   segmentationMask?: string;
   detectedBrand?: string | null;
   aspectRatio?: number | null;
-  onComplete?: () => void;
+  onComplete?: () => void; // Keep for internal use, but onBurnComplete is the standard
   morphedImageUrl?: string | null;
   onRequestMorph?: () => void;
-  onBurnComplete?: () => void;
 }
 
 interface CoalPieceShape {
@@ -288,14 +284,15 @@ export default function CoalGrowthAnimation({
     console.log('[CoalGrowthAnimation] ✅ Canvas initialized:', canvas.width, 'x', canvas.height);
     window.addEventListener('resize', updateCanvasSize);
 
-    // Calculate target area from bounding box
+    // Target area is the full canvas since container is already positioned at bounding box
+    // (container uses percentage positioning, so canvas fills the bottle area)
     const targetArea = {
-      x: boundingBox.x * canvas.width,
-      y: boundingBox.y * canvas.height,
-      width: boundingBox.width * canvas.width,
-      height: boundingBox.height * canvas.height,
+      x: 0,
+      y: 0,
+      width: canvas.width,
+      height: canvas.height,
     };
-    console.log('[CoalGrowthAnimation] 📏 Target area:', targetArea);
+    console.log('[CoalGrowthAnimation] 📏 Target area (full canvas):', targetArea);
 
     // Initialize coal pieces
     const initializeCoalPieces = () => {
@@ -438,13 +435,16 @@ export default function CoalGrowthAnimation({
   }, [boundingBox, onComplete, onBurnComplete]);
 
   // Calculate container style with masking
+  // Use bounding box percentage positioning like EnhancedFireAnimation
   const containerStyle: React.CSSProperties = {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    width: '100%',
-    height: '100%',
-    overflow: 'hidden',
+    left: `${boundingBox.x * 100}%`,
+    top: `${boundingBox.y * 100}%`,
+    width: `${boundingBox.width * 100}%`,
+    height: `${boundingBox.height * 100}%`,
+    pointerEvents: 'none',
+    zIndex: 10, // Critical: render above bottle image
+    overflow: 'visible', // Allow coal particles to extend beyond bottle bounds
   };
 
   if (segmentationMask) {

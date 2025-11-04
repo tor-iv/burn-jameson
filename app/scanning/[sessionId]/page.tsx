@@ -7,20 +7,8 @@ import { Button } from "@/components/ui/button";
 import dynamic from "next/dynamic";
 import { resizeImage, getBase64Size, formatBytes } from "@/lib/image-utils";
 
-// Import the bottle morph animation
-const BottleMorphAnimation = dynamic(() => import("@/components/BottleMorphAnimation"), {
-  ssr: false,
-});
-
-const SimpleBottleMorph = dynamic(() => import("@/components/SimpleBottleMorph"), {
-  ssr: false,
-});
-
-const CanvasFireAnimation = dynamic(() => import("@/components/CanvasFireAnimation"), {
-  ssr: false,
-});
-
-const EnhancedFireAnimation = dynamic(() => import("@/components/EnhancedFireAnimation"), {
+// Import the animation switcher that dynamically loads the correct animation
+const AnimationSwitcher = dynamic(() => import("@/components/AnimationSwitcher"), {
   ssr: false,
 });
 
@@ -347,19 +335,24 @@ export default function ScanningPage() {
         />
       )}
 
-      {/* Burn Animation (Phase 1) - Using Enhanced Animation */}
+      {/* Burn Animation (Phase 1) - Dynamically loaded based on NEXT_PUBLIC_ANIMATION_TYPE */}
       {bottleImage && animationPhase === 'burn' && (
-        <EnhancedFireAnimation boundingBox={activeBox} imageUrl={bottleImage} />
+        <AnimationSwitcher
+          mode="burn"
+          boundingBox={activeBox}
+          imageUrl={bottleImage}
+        />
       )}
 
       {/* Morph Animation (Phase 2 & 3) - Keep visible after completing */}
       {bottleImage && (animationPhase === 'morph' || animationPhase === 'complete') && useMorphAnimation && (
         <div className="absolute inset-0 w-full h-full">
-          <SimpleBottleMorph
+          <AnimationSwitcher
+            mode="morph"
             capturedImage={bottleImage}
             boundingBox={activeBox}
             onComplete={handleMorphComplete}
-            duration={2000} // 2 second cross-fade
+            duration={2000}
             preloadedImage={preloadedTransformedImage}
           />
         </div>
