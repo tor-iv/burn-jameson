@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS receipts (
     uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
     rebate_amount DECIMAL(10, 2),
-    venmo_username TEXT,
+    paypal_email TEXT,
     paid_at TIMESTAMP WITH TIME ZONE
 );
 

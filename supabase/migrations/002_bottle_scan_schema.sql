@@ -28,7 +28,11 @@ ALTER TABLE receipts DROP CONSTRAINT IF EXISTS receipts_scan_id_fkey;
 ALTER TABLE receipts DROP COLUMN IF EXISTS scan_id;
 ALTER TABLE receipts ADD COLUMN IF NOT EXISTS session_id TEXT NOT NULL;
 ALTER TABLE receipts ADD COLUMN IF NOT EXISTS admin_notes TEXT;
-ALTER TABLE receipts ADD COLUMN IF NOT EXISTS venmo_payment_id TEXT;
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS paypal_payout_id TEXT;
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS auto_approved BOOLEAN DEFAULT false;
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS confidence_score DECIMAL(3,2) CHECK (confidence_score >= 0 AND confidence_score <= 1);
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS review_reason TEXT;
+ALTER TABLE receipts ADD COLUMN IF NOT EXISTS auto_approved_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE receipts ALTER COLUMN status TYPE TEXT;
 ALTER TABLE receipts DROP CONSTRAINT IF EXISTS receipts_status_check;
 ALTER TABLE receipts ADD CONSTRAINT receipts_status_check

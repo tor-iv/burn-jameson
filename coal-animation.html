@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coal Growth - Embeddable</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+        }
+        
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="animationCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('animationCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = 400;
+        canvas.height = 600;
+        
+        let animationTime = 0;
+        let isAnimating = true;
+        let animationFrame = null;
+        const ANIMATION_DURATION = 6000;
+        const LOOP = true;
+        
+        const targetArea = {
+            x: 0,
+            y: 0,
+            width: canvas.width,
+            height: canvas.height
+        };
+        
+        let coalPieces = [];
+        let particles = [];
+        
+        class CoalPiece {
+            constructor(x, y, startTime) {
+                this.baseX = x;
+                this.baseY = y;
+                this.startTime = startTime;
+                this.growthDuration = 800 + Math.random() * 400;
+                this.size = 15 + Math.random() * 25;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.currentSize = 0;
+                this.shape = this.generateShape();
+                this.crumbleStartTime = null;
+                this.crumbleDuration = 600 + Math.random() * 400;
+                this.fallVelocity = 0;
+                this.currentY = y;
+                this.opacity = 1;
+                
+                const darkness = Math.floor(Math.random() * 15 + 5);
+                this.color = {
+                    r: darkness + Math.floor(Math.random() * 10),
+                    g: darkness,
+                    b: darkness
+                };
+                
+                this.emberIntensity = Math.random();
+                this.emberPhase = Math.random() * Math.PI * 2;
+            }
+            
+            generateShape() {
+                const points = [];
+                const numPoints = 5 + Math.floor(Math.random() * 3);
+                for (let i = 0; i < numPoints; i++) {
+                    const angle = (i / numPoints) * Math.PI * 2;
+                    const radiusVariation = 0.7 + Math.random() * 0.6;
+                    points.push({ angle: angle, radius: radiusVariation });
+                }
+                return points;
+            }
+            
+            updateGrowth(currentTime) {
+                const elapsed = currentTime - this.startTime;
+                if (elapsed < 0) {
+                    this.currentSize = 0;
+                    return;
+                }
+                
+                if (elapsed < this.growthDuration) {
+                    const progress = elapsed / this.growthDuration;
+                    const eased = 1 - Math.pow(1 - progress, 3);
+                    this.currentSize = this.size * eased;
+                } else {
+                    this.currentSize = this.size;
+                }
+            }
+            
+            updateCrumble(currentTime) {
+                if (this.crumbleStartTime === null) return;
+                
+                const elapsed = currentTime - this.crumbleStartTime;
+                if (elapsed < 0) return;
+                
+                if (elapsed < this.crumbleDuration) {
+                    const progress = elapsed / this.crumbleDuration;
+                    this.fallVelocity += 0.3;
+                    this.currentY += this.fallVelocity;
+                    this.opacity = 1 - progress;
+                    this.currentSize = this.size * (1 - progress * 0.3);
+                } else {
+                    this.opacity = 0;
+                }
+            }
+            
+            draw(phase, phaseProgress) {
+                if (this.currentSize <= 0 || this.opacity <= 0) return;
+                
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+                ctx.translate(this.baseX, this.currentY);
+                ctx.rotate(this.rotation + (phase === 'crumble' ? phaseProgress * 2 : 0));
+                
+                ctx.fillStyle = `rgb(${this.color.r}, ${this.color.g}, ${this.color.b})`;
+                ctx.beginPath();
+                this.shape.forEach((point, i) => {
+                    const x = Math.cos(point.angle) * point.radius * this.currentSize;
+                    const y = Math.sin(point.angle) * point.radius * this.currentSize;
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                });
+                ctx.closePath();
+                ctx.fill();
+                
+                const numSpots = Math.floor(this.currentSize / 8);
+                for (let i = 0; i < numSpots; i++) {
+                    const angle = (i * 2.4) % (Math.PI * 2);
+                    const dist = (this.currentSize * 0.3) * ((i * 0.7) % 1);
+                    const spotX = Math.cos(angle) * dist;
+                    const spotY = Math.sin(angle) * dist;
+                    const spotSize = 1 + Math.random() * 2;
+                    
+                    ctx.fillStyle = `rgba(0, 0, 0, 0.4)`;
+                    ctx.beginPath();
+                    ctx.arc(spotX, spotY, spotSize, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                if (phase === 'ember') {
+                    const time = animationTime / 1000;
+                    const pulse = Math.sin(time * 3 + this.emberPhase) * 0.5 + 0.5;
+                    const glowIntensity = this.emberIntensity * pulse * (1 - phaseProgress * 0.5);
+                    
+                    if (glowIntensity > 0.3) {
+                        ctx.shadowBlur = 15;
+                        ctx.shadowColor = `rgba(255, 107, 53, ${glowIntensity * 0.6})`;
+                        ctx.strokeStyle = `rgba(255, 107, 53, ${glowIntensity * 0.4})`;
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        this.shape.forEach((point, i) => {
+                            const x = Math.cos(point.angle) * point.radius * this.currentSize;
+                            const y = Math.sin(point.angle) * point.radius * this.currentSize;
+                            if (i === 0) {
+                                ctx.moveTo(x, y);
+                            } else {
+                                ctx.lineTo(x, y);
+                            }
+                        });
+                        ctx.closePath();
+                        ctx.stroke();
+                        ctx.shadowBlur = 0;
+                    }
+                }
+                
+                ctx.restore();
+            }
+        }
+        
+        class Particle {
+            constructor(x, y, type) {
+                this.x = x;
+                this.y = y;
+                this.type = type;
+                this.vx = (Math.random() - 0.5) * 2;
+                this.vy = type === 'ember' ? -Math.random() * 2 - 1 : -Math.random() * 0.5;
+                this.life = type === 'ember' ? Math.random() * 1 + 0.5 : Math.random() * 1.5 + 1;
+                this.maxLife = this.life;
+                this.size = type === 'ember' ? Math.random() * 2 + 1 : Math.random() * 1.5 + 0.5;
+                
+                if (type === 'ember') {
+                    this.color = {
+                        r: 255,
+                        g: Math.floor(Math.random() * 33 + 107),
+                        b: Math.floor(Math.random() * 19 + 53)
+                    };
+                } else {
+                    const gray = Math.floor(Math.random() * 30 + 40);
+                    this.color = { r: gray, g: gray, b: gray };
+                }
+            }
+            
+            update(dt) {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.05;
+                this.life -= dt;
+            }
+            
+            draw() {
+                const opacity = Math.max(0, this.life / this.maxLife);
+                ctx.fillStyle = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${opacity * 0.6})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                
+                if (this.type === 'ember') {
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = `rgba(${this.color.r}, ${this.color.g}, ${this.color.b}, ${opacity})`;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            }
+        }
+        
+        function initializeCoalPieces() {
+            coalPieces = [];
+            const rows = Math.ceil(targetArea.height / 25);
+            const cols = Math.ceil(targetArea.width / 25);
+            const growthPhase = 2000;
+            
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < cols; col++) {
+                    const x = targetArea.x + (col * 25) + 12.5 + (Math.random() - 0.5) * 10;
+                    const y = targetArea.y + (row * 25) + 12.5 + (Math.random() - 0.5) * 10;
+                    
+                    const bottomRow = rows - row - 1;
+                    const delay = (bottomRow / rows) * growthPhase + Math.random() * 300;
+                    
+                    coalPieces.push(new CoalPiece(x, y, delay));
+                }
+            }
+        }
+        
+        function updateParticles(dt) {
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => p.update(dt));
+        }
+        
+        function drawParticles() {
+            particles.forEach(p => p.draw());
+        }
+        
+        function animate() {
+            if (!isAnimating) return;
+            
+            const deltaTime = 16;
+            animationTime += deltaTime;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            const totalProgress = Math.min(animationTime / ANIMATION_DURATION, 1);
+            let currentPhase = '';
+            let phaseProgress = 0;
+            
+            if (totalProgress < 0.42) {
+                currentPhase = 'growth';
+                phaseProgress = totalProgress / 0.42;
+                coalPieces.forEach(piece => piece.updateGrowth(animationTime));
+                
+                if (Math.random() < 0.3) {
+                    const piece = coalPieces[Math.floor(Math.random() * coalPieces.length)];
+                    if (piece.currentSize > 5) {
+                        particles.push(new Particle(piece.baseX, piece.currentY, 'ember'));
+                    }
+                }
+            } else if (totalProgress < 0.58) {
+                currentPhase = 'char';
+                phaseProgress = (totalProgress - 0.42) / 0.17;
+                coalPieces.forEach(piece => piece.updateGrowth(animationTime));
+                
+                if (Math.random() < 0.2) {
+                    const piece = coalPieces[Math.floor(Math.random() * coalPieces.length)];
+                    particles.push(new Particle(piece.baseX, piece.currentY, 'ash'));
+                }
+            } else if (totalProgress < 0.83) {
+                currentPhase = 'ember';
+                phaseProgress = (totalProgress - 0.58) / 0.25;
+                coalPieces.forEach(piece => piece.updateGrowth(animationTime));
+                
+                if (Math.random() < 0.15) {
+                    const piece = coalPieces[Math.floor(Math.random() * coalPieces.length)];
+                    particles.push(new Particle(piece.baseX, piece.currentY, 'ember'));
+                }
+            } else if (totalProgress < 1) {
+                currentPhase = 'crumble';
+                phaseProgress = (totalProgress - 0.83) / 0.17;
+                
+                const crumblePhaseTime = animationTime - (ANIMATION_DURATION * 0.83);
+                coalPieces.forEach((piece) => {
+                    if (piece.crumbleStartTime === null) {
+                        const rowDelay = ((piece.baseY - targetArea.y) / targetArea.height) * 1000;
+                        if (crumblePhaseTime >= rowDelay) {
+                            piece.crumbleStartTime = animationTime;
+                        }
+                    }
+                    piece.updateCrumble(animationTime);
+                });
+                
+                if (Math.random() < 0.4) {
+                    const piece = coalPieces[Math.floor(Math.random() * coalPieces.length)];
+                    if (piece.crumbleStartTime !== null) {
+                        particles.push(new Particle(piece.baseX, piece.currentY, 'dust'));
+                    }
+                }
+            } else {
+                particles = [];
+                
+                if (LOOP) {
+                    setTimeout(() => {
+                        animationTime = 0;
+                        particles = [];
+                        initializeCoalPieces();
+                    }, 1000);
+                }
+            }
+            
+            coalPieces.forEach(piece => piece.draw(currentPhase, phaseProgress));
+            updateParticles(deltaTime / 1000);
+            drawParticles();
+            
+            animationFrame = requestAnimationFrame(animate);
+        }
+        
+        initializeCoalPieces();
+        animate();
+    </script>
+</body>
+</html>

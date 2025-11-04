@@ -51,9 +51,10 @@ GOOGLE_CLOUD_PROJECT_ID=your_project_id
 
 # PayPal Payouts (add when ready)
 PAYPAL_CLIENT_ID=your_paypal_client_id
-PAYPAL_SECRET=your_paypal_secret
-PAYPAL_ENV=sandbox
-PAYPAL_SENDER_EMAIL=payouts@yourdomain.com
+PAYPAL_CLIENT_SECRET=your_paypal_client_secret
+PAYPAL_ENVIRONMENT=sandbox
+ENABLE_PAYPAL_EMAIL_RATE_LIMIT=true
+PAYPAL_EMAIL_RATE_LIMIT_DAYS=30
 ```
 
 ### 3. Domain Setup
@@ -224,10 +225,11 @@ npm run lint
 ### PayPal Payouts API
 1. Upgrade to a PayPal Business account and verify identity
 2. Request access to the Payouts product (Sandbox + Live)
-3. Create REST app credentials (`PAYPAL_CLIENT_ID` / `PAYPAL_SECRET`)
+3. Create REST app credentials (`PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET`)
 4. Store credentials in Vercel environment variables
 5. Implement payout handler in `/app/api/paypal-payout/route.ts`
-6. Configure Supabase Edge Function secrets if using serverless payouts
+6. Configure webhook endpoint for automatic status tracking
+7. Set fraud prevention env vars (`ENABLE_PAYPAL_EMAIL_RATE_LIMIT`, `PAYPAL_EMAIL_RATE_LIMIT_DAYS`)
 
 ---
 

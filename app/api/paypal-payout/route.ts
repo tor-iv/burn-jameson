@@ -10,6 +10,27 @@ interface PayoutRequest {
   amount: number;
 }
 
+// Helper function to add timeout to fetch requests
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 60000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    return response;
+  } catch (error) {
+    clearTimeout(timeout);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timed out');
+    }
+    throw error;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { receiptId, paypalEmail, amount }: PayoutRequest = await request.json();
@@ -99,14 +120,14 @@ export async function POST(request: NextRequest) {
       ? 'https://api-m.sandbox.paypal.com/v1/oauth2/token'
       : 'https://api-m.paypal.com/v1/oauth2/token';
 
-    const authResponse = await fetch(authUrl, {
+    const authResponse = await fetchWithTimeout(authUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Authorization': `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
       },
       body: 'grant_type=client_credentials',
-    });
+    }, 30000); // 30 second timeout for auth
 
     if (!authResponse.ok) {
       const errorText = await authResponse.text();
@@ -146,14 +167,14 @@ export async function POST(request: NextRequest) {
       ],
     };
 
-    const payoutResponse = await fetch(payoutUrl, {
+    const payoutResponse = await fetchWithTimeout(payoutUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${access_token}`,
       },
       body: JSON.stringify(payoutPayload),
-    });
+    }, 60000); // 60 second timeout for payout creation
 
     if (!payoutResponse.ok) {
       const errorData = await payoutResponse.json();

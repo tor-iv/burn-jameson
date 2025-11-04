@@ -8,7 +8,7 @@ import confetti from "canvas-confetti";
 
 export default function ConfirmationPage() {
   const router = useRouter();
-  const venmoUsername = typeof window !== "undefined" ? localStorage.getItem("kh_venmo") : null;
+  const paypalEmail = typeof window !== "undefined" ? localStorage.getItem("kh_paypal_email") : null;
 
   useEffect(() => {
     // Trigger confetti animation
@@ -69,7 +69,7 @@ export default function ConfirmationPage() {
         {/* Timeline */}
         <div className="space-y-2 py-4">
           <p className="text-lg text-cream/90">
-            You'll receive <span className="font-bold text-whiskey-amber">$5</span> via Venmo within 24 hours
+            You'll receive <span className="font-bold text-whiskey-amber">$5</span> via PayPal in 1-2 days
           </p>
         </div>
 
@@ -83,8 +83,8 @@ export default function ConfirmationPage() {
           <div className="text-3xl font-bold text-whiskey-amber mb-2 animate-pulse">
             $5 Pending
           </div>
-          {venmoUsername && (
-            <div className="text-cream/70">to {venmoUsername}</div>
+          {paypalEmail && (
+            <div className="text-cream/70">to {paypalEmail}</div>
           )}
         </motion.div>
 

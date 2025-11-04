@@ -43,15 +43,49 @@ The app uses **session-based tracking** (no user authentication required):
 
 **Critical:** Session IDs must persist through the entire flow (scan → upload → confirmation). Check `sessionStorage` when debugging.
 
+### Auto-Approval Flow (80% Confidence Threshold)
+
+The app features **automatic receipt approval and payout** for high-confidence receipts:
+
+1. **Receipt Upload:** User uploads receipt via [app/upload/[sessionId]/page.tsx](app/upload/[sessionId]/page.tsx)
+2. **Validation:** Receipt validated via [app/api/validate-receipt/route.ts](app/api/validate-receipt/route.ts) - Returns confidence score (0.00-1.00)
+3. **Auto-Approval Check:** [app/api/auto-approve-receipt/route.ts](app/api/auto-approve-receipt/route.ts) evaluates:
+   - ✅ **Confidence ≥ 80%** → Auto-approve + trigger immediate payout
+   - ⚠️ **Confidence < 80%** → Keep as `pending` for manual admin review
+4. **Webhook Tracking:** [app/api/webhooks/paypal/route.ts](app/api/webhooks/paypal/route.ts) receives PayPal status updates
+
+**Auto-Approval Criteria:**
+- Confidence score ≥ 0.80 (80%)
+- Receipt validation passes (has "Keeper's Heart", date, price, receipt keywords)
+- No fraud prevention flags (duplicate image, rate limit exceeded)
+
+**Automatic Payout:**
+- If approved, [app/api/paypal-payout/route.ts](app/api/paypal-payout/route.ts) is called automatically
+- Updates receipt status to `paid` with `paypal_payout_id`
+- Sets `auto_approved = true` and `auto_approved_at` timestamp
+
+**Manual Review Queue:**
+- Receipts with confidence < 80% stay as `pending`
+- `review_reason` field explains why (e.g., "Low confidence (65.2% < 80%)", "Keeper's Heart not clearly detected")
+- Admin dashboard filters to show only low-confidence receipts
+
+**Webhook Integration:**
+- PayPal webhooks automatically update receipt status
+- `PAYMENT.PAYOUTS-ITEM.SUCCEEDED` → Logs success
+- `PAYMENT.PAYOUTS-ITEM.FAILED` → Resets to `approved` for retry
+- See [docs/PAYPAL_WEBHOOK_SETUP.md](docs/PAYPAL_WEBHOOK_SETUP.md) for setup
+
 ### API Route Architecture
 
 All API routes in [app/api/](app/api/) are Next.js route handlers (not Express). Key endpoints:
 
 - **[detect-bottle/route.ts](app/api/detect-bottle/route.ts)** - Google Vision API integration. Detects 15+ competitor brands (Jameson, Bulleit, Woodford Reserve, etc. defined in `COMPETITOR_BRANDS` object). Returns `{ detected, brand, confidence, normalizedBoundingBox, expandedBoundingBox }`. Uses OBJECT_LOCALIZATION feature for accurate bottle bounding boxes, with 5% expansion for animation overlay.
-- **[validate-receipt/route.ts](app/api/validate-receipt/route.ts)** - Google Vision API OCR to extract receipt text and validate "Keeper's Heart" purchase
+- **[validate-receipt/route.ts](app/api/validate-receipt/route.ts)** - Google Vision API OCR to extract receipt text and validate "Keeper's Heart" purchase. Returns confidence score (0.00-1.00).
+- **[auto-approve-receipt/route.ts](app/api/auto-approve-receipt/route.ts)** - Auto-approval engine. Checks if confidence ≥ 80%, then auto-approves and triggers immediate payout. Low-confidence receipts stay pending for manual review.
 - **[validate-image/route.ts](app/api/validate-image/route.ts)** - Image validation (format, size 100KB-10MB, quality, duplicate detection via perceptual hashing in [lib/image-hash.ts](lib/image-hash.ts))
 - **[check-rate-limit/route.ts](app/api/check-rate-limit/route.ts)** - IP-based rate limiting (3 scans per 24 hours)
-- **[paypal-payout/route.ts](app/api/paypal-payout/route.ts)** - PayPal Payouts API integration (admin triggers payout after receipt approval)
+- **[paypal-payout/route.ts](app/api/paypal-payout/route.ts)** - PayPal Payouts API integration with 60-second timeout protection. Creates payout batch and updates database.
+- **[webhooks/paypal/route.ts](app/api/webhooks/paypal/route.ts)** - PayPal webhook handler with signature verification. Receives payout status updates (SUCCEEDED, FAILED, BLOCKED, etc.) and automatically updates database.
 - **[morph-bottle-simple/route.ts](app/api/morph-bottle-simple/route.ts)** - Gemini API for bottle morphing animation (experimental, see [MORPH_DEBUGGING.md](MORPH_DEBUGGING.md))
 
 ### Database Schema (Supabase)
