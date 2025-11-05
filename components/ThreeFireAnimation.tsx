@@ -97,7 +97,7 @@ export default function ThreeFireAnimation({
         this.intensity = this.options.intensity
         this.burnProgress = 0
         this.isBurning = false
-        this.burnSpeed = 0.3
+        this.burnSpeed = 0.24  // Reduced from 0.3 to match 25% slowdown (0.3 * 0.8 = 0.24)
 
         this.init()
       }
@@ -238,107 +238,8 @@ export default function ThreeFireAnimation({
         this.scene.add(this.embers)
       }
 
-      createSmokeParticles() {
-        const geometry = new THREE.BufferGeometry()
-        const positions = new Float32Array(this.options.smokeCount * 3)
-        const velocities = new Float32Array(this.options.smokeCount * 3)
-        const sizes = new Float32Array(this.options.smokeCount)
-        const phases = new Float32Array(this.options.smokeCount)
-        const lifetimes = new Float32Array(this.options.smokeCount)
-
-        for (let i = 0; i < this.options.smokeCount; i++) {
-          const i3 = i * 3
-
-          const angle = Math.random() * Math.PI * 2
-          const radius = Math.random() * this.options.radius * 1.5
-          const heightPos = Math.random() * this.options.height * 0.6
-
-          positions[i3] = Math.cos(angle) * radius
-          positions[i3 + 1] = heightPos
-          positions[i3 + 2] = Math.sin(angle) * radius
-
-          velocities[i3] = (Math.random() - 0.5) * 0.025
-          velocities[i3 + 1] = 0.008 + Math.random() * 0.015
-          velocities[i3 + 2] = (Math.random() - 0.5) * 0.025
-
-          sizes[i] = 3 + Math.random() * 10
-          phases[i] = Math.random() * Math.PI * 2
-          lifetimes[i] = Math.random()
-        }
-
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-        geometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3))
-        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1))
-        geometry.setAttribute('phase', new THREE.BufferAttribute(phases, 1))
-        geometry.setAttribute('lifetime', new THREE.BufferAttribute(lifetimes, 1))
-
-        const material = new THREE.ShaderMaterial({
-          uniforms: {
-            time: { value: 0 },
-            burnProgress: { value: 0 }
-          },
-          vertexShader: `
-            attribute float size;
-            attribute float phase;
-            attribute float lifetime;
-
-            uniform float time;
-            uniform float burnProgress;
-
-            varying float vLifetime;
-            varying vec3 vPosition;
-
-            void main() {
-              vLifetime = lifetime;
-              vPosition = position;
-
-              vec3 pos = position;
-
-              float drift = sin(time + phase) * 0.1 * (position.y / 4.0);
-              pos.x += drift;
-              pos.z += cos(time + phase) * 0.1 * (position.y / 4.0);
-
-              vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
-
-              float expansion = 1.0 + (position.y / 4.0) * 2.0;
-              gl_PointSize = size * expansion * (300.0 / -mvPosition.z) * burnProgress;
-
-              gl_Position = projectionMatrix * mvPosition;
-            }
-          `,
-          fragmentShader: `
-            uniform float time;
-            uniform float burnProgress;
-
-            varying float vLifetime;
-            varying vec3 vPosition;
-
-            void main() {
-              vec2 center = gl_PointCoord - vec2(0.5);
-              float dist = length(center);
-
-              if (dist > 0.5) discard;
-
-              float alpha = (1.0 - smoothstep(0.0, 0.5, dist)) * 0.12; // Reduced from 0.3 for much lighter smoke
-              float heightFade = 1.0 - smoothstep(2.0, 5.0, vPosition.y);
-              alpha *= heightFade * vLifetime * burnProgress;
-
-              vec3 smokeColor = vec3(0.15, 0.15, 0.15); // Lighter gray smoke
-              gl_FragColor = vec4(smokeColor, alpha);
-            }
-          `,
-          transparent: true,
-          depthWrite: false,
-          blending: THREE.NormalBlending
-        })
-
-        this.smoke = new THREE.Points(geometry, material)
-        this.scene.add(this.smoke)
-      }
-
       init() {
         this.createEmberParticles()
-        this.createSmokeParticles()
       }
 
       update(delta: number) {
@@ -381,42 +282,6 @@ export default function ThreeFireAnimation({
           ;(this.embers.material as THREE.ShaderMaterial).uniforms.intensity.value = this.intensity
           ;(this.embers.material as THREE.ShaderMaterial).uniforms.burnProgress.value = this.burnProgress
         }
-
-        // Update smoke particles
-        if (this.smoke && this.burnProgress > 0.3) {
-          const smokePositions = this.smoke.geometry.attributes.position.array as Float32Array
-          const smokeVelocities = this.smoke.geometry.attributes.velocity.array as Float32Array
-          const lifetimes = this.smoke.geometry.attributes.lifetime.array as Float32Array
-
-          for (let i = 0; i < this.options.smokeCount; i++) {
-            const i3 = i * 3
-
-            smokePositions[i3] += smokeVelocities[i3]
-            smokePositions[i3 + 1] += smokeVelocities[i3 + 1]
-            smokePositions[i3 + 2] += smokeVelocities[i3 + 2]
-
-            lifetimes[i] += delta * 0.1
-
-            if (smokePositions[i3 + 1] > this.options.height * 1.2 || lifetimes[i] > 1) {
-              const angle = Math.random() * Math.PI * 2
-              const radius = Math.random() * this.options.radius * 1.5
-
-              smokePositions[i3] = Math.cos(angle) * radius
-              smokePositions[i3 + 1] = Math.random() * 0.5
-              smokePositions[i3 + 2] = Math.sin(angle) * radius
-
-              lifetimes[i] = 0
-            }
-          }
-
-          this.smoke.geometry.attributes.position.needsUpdate = true
-          this.smoke.geometry.attributes.lifetime.needsUpdate = true
-        }
-
-        if (this.smoke) {
-          ;(this.smoke.material as THREE.ShaderMaterial).uniforms.time.value = this.time
-          ;(this.smoke.material as THREE.ShaderMaterial).uniforms.burnProgress.value = this.burnProgress
-        }
       }
 
       startBurn() {
@@ -429,11 +294,6 @@ export default function ThreeFireAnimation({
           this.embers.geometry.dispose()
           ;(this.embers.material as THREE.Material).dispose()
           this.scene.remove(this.embers)
-        }
-        if (this.smoke) {
-          this.smoke.geometry.dispose()
-          ;(this.smoke.material as THREE.Material).dispose()
-          this.scene.remove(this.smoke)
         }
       }
     }
@@ -455,7 +315,6 @@ export default function ThreeFireAnimation({
       radius: 0.8,
       height: fireHeight,  // Dynamic height based on bottle size
       emberCount: 1500,  // Reduced from 3000 for less dense fire
-      smokeCount: 1000,  // Reduced from 2000 for lighter smoke
       intensity: 0.6     // Reduced from 1.0 for dimmer effect
     })
 
@@ -479,16 +338,13 @@ export default function ThreeFireAnimation({
     if (burning.embers) {
       burning.embers.position.set(worldX, worldY, 0)
     }
-    if (burning.smoke) {
-      burning.smoke.position.set(worldX, worldY, 0)
-    }
 
     burning.startBurn()
 
     console.log('[ThreeFireAnimation] 🔥 Starting Three.js burn animation')
 
     // ===== ANIMATION LOOP =====
-    const duration = 6
+    const duration = 7.5  // Slowed down by 25% (from 6s) to allow morph preload
     const startTime = Date.now()
     let lastTime = startTime
 
