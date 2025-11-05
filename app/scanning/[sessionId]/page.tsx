@@ -180,12 +180,12 @@ export default function ScanningPage() {
 
     if (useMorphAnimation) {
       // Two-phase animation: burn then morph
-      // Fire now burns at 120px/sec, taking ~6 seconds to completely burn through bottle
-      console.log('[ScanningPage] 🔥 Starting burn timer (6 seconds)')
+      // Fire now burns at 7.5 seconds (slowed by 25% to allow morph preload)
+      console.log('[ScanningPage] 🔥 Starting burn timer (7.5 seconds)')
       const burnTimer = setTimeout(() => {
         console.log('[ScanningPage] 🔄 Burn timer fired - switching to morph phase')
         setAnimationPhase('morph');
-      }, 6000); // 6 seconds - faster burn, then morph
+      }, 7500); // 7.5 seconds - slowed burn to allow morph preload
 
       // DON'T auto-advance when morph is enabled - let the animation complete first
       // The handleMorphComplete callback will show the continue button
@@ -195,16 +195,16 @@ export default function ScanningPage() {
         clearTimeout(burnTimer);
       };
     } else {
-      // Burn-only timing: faster burn animation
+      // Burn-only timing: 7.5 second burn animation
       console.log('[ScanningPage] 🔥 Starting burn-only timers')
-      const buttonTimer = setTimeout(() => setShowContinue(true), 6500);
+      const buttonTimer = setTimeout(() => setShowContinue(true), 8000); // Show button 0.5s after burn completes
 
       const autoTimer = setTimeout(() => {
         if (!hasNavigated.current) {
           hasNavigated.current = true;
           router.push(`/success/${sessionId}`);
         }
-      }, 8000);
+      }, 9500); // Auto-navigate 2s after button appears
 
       return () => {
         clearTimeout(buttonTimer);
