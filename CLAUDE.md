@@ -148,6 +148,11 @@ The app uses a **flexible animation switcher** that allows changing animations v
    - Burn: [CoalGrowthAnimation](components/CoalGrowthAnimation.tsx) - 6-second coal growth with 4 phases (growth, char, ember, crumble)
    - Morph: [SimpleBottleMorph](components/SimpleBottleMorph.tsx) - 2-second cross-fade using Gemini API
 
+3. **`3fire`** - Three.js burning paper effect
+   - Burn: [ThreeFireAnimation](components/ThreeFireAnimation.tsx) - 6-second WebGL burning paper with volumetric fire, embers, ash, and heat distortion shaders
+   - Morph: [SimpleBottleMorph](components/SimpleBottleMorph.tsx) - 2-second cross-fade using Gemini API
+   - Note: Requires WebGL support; more GPU-intensive than canvas alternatives
+
 **Other Available Animations (not in switcher):**
 - [CanvasFireAnimation](components/CanvasFireAnimation.tsx) - Slower 10-second canvas fire
 - [ThreeBurnAnimation](components/ThreeBurnAnimation.tsx) - WebGL shader-based fire (5 seconds)
@@ -169,7 +174,7 @@ Copy [.env.example](.env.example) to `.env.local`:
 
 ```bash
 # Animation Type (controls which animation plays during bottle scan)
-NEXT_PUBLIC_ANIMATION_TYPE=fire  # Options: 'fire' or 'coal' (default: 'fire')
+NEXT_PUBLIC_ANIMATION_TYPE=fire  # Options: 'fire', 'coal', or '3fire' (default: 'fire')
 
 # Supabase (required for database/storage)
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co

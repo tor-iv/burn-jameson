@@ -166,10 +166,24 @@ export default function ScanningPage() {
   }, [router, sessionId]);
 
   useEffect(() => {
+    console.log('[ScanningPage] ⏱️ Animation timer effect', {
+      useMorphAnimation,
+      hasBottleImage: !!bottleImage,
+      animationPhase
+    })
+
+    // Only start timers when we have a bottle image (animation can actually render)
+    if (!bottleImage) {
+      console.log('[ScanningPage] ⏸️ No bottle image yet, waiting to start timers')
+      return
+    }
+
     if (useMorphAnimation) {
       // Two-phase animation: burn then morph
       // Fire now burns at 120px/sec, taking ~6 seconds to completely burn through bottle
+      console.log('[ScanningPage] 🔥 Starting burn timer (6 seconds)')
       const burnTimer = setTimeout(() => {
+        console.log('[ScanningPage] 🔄 Burn timer fired - switching to morph phase')
         setAnimationPhase('morph');
       }, 6000); // 6 seconds - faster burn, then morph
 
@@ -177,10 +191,12 @@ export default function ScanningPage() {
       // The handleMorphComplete callback will show the continue button
 
       return () => {
+        console.log('[ScanningPage] 🧹 Clearing burn timer')
         clearTimeout(burnTimer);
       };
     } else {
       // Burn-only timing: faster burn animation
+      console.log('[ScanningPage] 🔥 Starting burn-only timers')
       const buttonTimer = setTimeout(() => setShowContinue(true), 6500);
 
       const autoTimer = setTimeout(() => {
@@ -195,7 +211,7 @@ export default function ScanningPage() {
         clearTimeout(autoTimer);
       };
     }
-  }, [router, sessionId, useMorphAnimation]);
+  }, [router, sessionId, useMorphAnimation, bottleImage]);
 
   const activeBox = useMemo<NormalizedBox>(() => {
     return expandedBox ?? normalizedBox ?? FALLBACK_BOX;

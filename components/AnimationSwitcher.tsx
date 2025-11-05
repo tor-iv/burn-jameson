@@ -23,6 +23,13 @@ type AnimationSwitcherProps = {
 } & (BurnAnimationProps | MorphAnimationProps);
 
 /**
+ * Module-level cache to prevent recreating dynamic imports on every render
+ * This ensures React sees the same component reference and doesn't unmount/remount
+ */
+const burnAnimationCache = new Map<string, ReturnType<typeof loadBurnAnimation>>();
+const morphAnimationCache = new Map<string, ReturnType<typeof loadMorphAnimation>>();
+
+/**
  * Dynamically import burn animations based on type
  */
 const loadBurnAnimation = (animationType: string) => {
@@ -50,6 +57,15 @@ const loadBurnAnimation = (animationType: string) => {
           console.log('[AnimationSwitcher] ⏳ Coal animation loading...');
           return <div className="text-white text-center">Loading coal animation...</div>;
         },
+      });
+    case '3fire':
+      return dynamic(() => import('./ThreeFireAnimation').catch(err => {
+        console.error('[AnimationSwitcher] ❌ Failed to load ThreeFireAnimation:', err);
+        console.error('[AnimationSwitcher] 🔄 Falling back to EnhancedFireAnimation');
+        return import('./EnhancedFireAnimation');
+      }), {
+        ssr: false,
+        loading: () => <div className="text-white text-center">Loading 3D fire animation...</div>,
       });
     default:
       console.log('[AnimationSwitcher] ⚠️ Unknown animation type, falling back to fire');
@@ -84,6 +100,26 @@ const loadMorphAnimation = (animationType: string) => {
 };
 
 /**
+ * Get cached burn animation component (prevents remounting on re-render)
+ */
+const getCachedBurnAnimation = (animationType: string) => {
+  if (!burnAnimationCache.has(animationType)) {
+    burnAnimationCache.set(animationType, loadBurnAnimation(animationType));
+  }
+  return burnAnimationCache.get(animationType)!;
+};
+
+/**
+ * Get cached morph animation component (prevents remounting on re-render)
+ */
+const getCachedMorphAnimation = (animationType: string) => {
+  if (!morphAnimationCache.has(animationType)) {
+    morphAnimationCache.set(animationType, loadMorphAnimation(animationType));
+  }
+  return morphAnimationCache.get(animationType)!;
+};
+
+/**
  * AnimationSwitcher Component
  *
  * Usage:
@@ -103,12 +139,12 @@ export default function AnimationSwitcher(props: AnimationSwitcherProps) {
 
   if (mode === 'burn') {
     console.log('[AnimationSwitcher] 🔥 Loading burn animation:', animationType);
-    const BurnAnimation = loadBurnAnimation(animationType);
+    const BurnAnimation = getCachedBurnAnimation(animationType);
     console.log('[AnimationSwitcher] ✅ Burn animation component loaded, rendering...');
     return <BurnAnimation {...(animationProps as BurnAnimationProps)} />;
   } else if (mode === 'morph') {
     console.log('[AnimationSwitcher] 🔄 Loading morph animation:', animationType);
-    const MorphAnimation = loadMorphAnimation(animationType);
+    const MorphAnimation = getCachedMorphAnimation(animationType);
     console.log('[AnimationSwitcher] ✅ Morph animation component loaded, rendering...');
     return <MorphAnimation {...(animationProps as MorphAnimationProps)} />;
   }
