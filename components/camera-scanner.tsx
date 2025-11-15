@@ -115,7 +115,7 @@ export default function CameraScanner({
           <p className="text-white text-lg font-medium drop-shadow-lg">
             {isScanning
               ? "🔥 Scanning..."
-              : "Point camera at any Jameson advertisement"}
+              : "Point camera at any competitor whiskey advertisement"}
           </p>
         </div>
 

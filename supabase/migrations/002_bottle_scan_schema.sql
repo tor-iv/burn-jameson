@@ -1,6 +1,6 @@
 -- Updated schema for bottle scan flow
 -- This migration updates the schema to support the new flow:
--- 1. User scans competitor bottle (Jameson)
+-- 1. User scans competitor whiskey bottle
 -- 2. System detects bottle and creates session
 -- 3. User uploads receipt with Keeper's Heart purchase
 -- 4. Admin reviews and approves payment

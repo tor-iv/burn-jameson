@@ -159,7 +159,7 @@ Every bottle scan (successful detection)
 - session_id (text, unique)
 - user_id (uuid, foreign key, nullable)
 - bottle_image (text) - Supabase Storage URL
-- detected_brand (text) - e.g. "Jameson Irish Whiskey"
+- detected_brand (text) - e.g. competitor brand name like "Jameson Irish Whiskey"
 - confidence (float) - ML confidence score
 - scanned_at (timestamp)
 - status (enum) - 'pending_receipt', 'completed', 'rejected'

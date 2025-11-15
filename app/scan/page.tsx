@@ -107,7 +107,7 @@ export default function ScanPage() {
         const result = await saveBottleScan(
           sessionId,
           imageBlob,
-          data.brand || 'Jameson Irish Whiskey',
+          data.brand || 'Competitor Whiskey',
           data.confidence
         );
 
@@ -211,7 +211,7 @@ export default function ScanPage() {
           <p className="text-white text-lg font-semibold">
             {confidence < 30 && "Looking for bottle..."}
             {confidence >= 30 && confidence < 75 && `Scanning... ${confidence}%`}
-            {confidence >= 75 && "✓ Jameson detected!"}
+            {confidence >= 75 && "✓ Bottle detected!"}
           </p>
         </div>
       </div>
@@ -219,7 +219,7 @@ export default function ScanPage() {
       {/* Instructions */}
       <div className="absolute bottom-32 left-0 right-0 z-10 text-center px-6">
         <p className="text-white text-lg font-medium drop-shadow-lg">
-          Point at Jameson bottle label
+          Point at competitor whiskey bottle label
         </p>
       </div>
 

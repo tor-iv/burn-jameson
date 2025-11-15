@@ -79,7 +79,7 @@ The app features **automatic receipt approval and payout** for high-confidence r
 
 All API routes in [app/api/](app/api/) are Next.js route handlers (not Express). Key endpoints:
 
-- **[detect-bottle/route.ts](app/api/detect-bottle/route.ts)** - Google Vision API integration. Detects 15+ competitor brands (Jameson, Bulleit, Woodford Reserve, etc. defined in `COMPETITOR_BRANDS` object). Returns `{ detected, brand, confidence, normalizedBoundingBox, expandedBoundingBox }`. Uses OBJECT_LOCALIZATION feature for accurate bottle bounding boxes, with 5% expansion for animation overlay.
+- **[detect-bottle/route.ts](app/api/detect-bottle/route.ts)** - Google Vision API integration. Detects 15+ competitor brands (multiple Irish, Scotch, and American whiskeys defined in `COMPETITOR_BRANDS` object). Returns `{ detected, brand, confidence, normalizedBoundingBox, expandedBoundingBox }`. Uses OBJECT_LOCALIZATION feature for accurate bottle bounding boxes, with 5% expansion for animation overlay.
 - **[validate-receipt/route.ts](app/api/validate-receipt/route.ts)** - Google Vision API OCR to extract receipt text and validate "Keeper's Heart" purchase. Returns confidence score (0.00-1.00).
 - **[auto-approve-receipt/route.ts](app/api/auto-approve-receipt/route.ts)** - Auto-approval engine. Checks if confidence ≥ 80%, then auto-approves and triggers immediate payout. Low-confidence receipts stay pending for manual review.
 - **[validate-image/route.ts](app/api/validate-image/route.ts)** - Image validation (format, size 100KB-10MB, quality, duplicate detection via perceptual hashing in [lib/image-hash.ts](lib/image-hash.ts))

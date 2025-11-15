@@ -13,7 +13,7 @@ A mobile-first web application for Keeper's Heart Whiskey's AR marketing campaig
 ## 🎯 Quick Understanding
 
 **What This App Does:**
-- Users point their phone at a competitor whiskey bottle (Jameson, Bulleit, etc.)
+- Users point their phone at a competitor whiskey bottle (various brands supported)
 - Google Vision API detects the bottle brand in real-time using ML
 - AR "burn" animation plays over the bottle
 - User purchases Keeper's Heart whiskey and uploads receipt photo
@@ -184,7 +184,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 - `id` (uuid, primary key)
 - `session_id` (text, unique) - Links to receipts
 - `bottle_image` (text) - Supabase Storage URL
-- `detected_brand` (text) - e.g. "Jameson Irish Whiskey"
+- `detected_brand` (text) - e.g. "Competitor Brand Irish Whiskey"
 - `confidence` (float) - ML confidence score (0-1)
 - `status` (enum) - `pending_receipt` | `completed` | `rejected`
 - `scanned_at` (timestamp)
@@ -257,7 +257,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 - [x] Database schema with payout tracking
 
 **15 Competitor Brands Tracked:**
-- Irish: Jameson, Tullamore Dew, Bushmills, Redbreast, Writers' Tears, Teeling
+- Irish: Multiple major brands including Tullamore Dew, Bushmills, Redbreast, Writers' Tears, Teeling
 - Scotch: Johnnie Walker
 - American: Bulleit, Woodford Reserve, Maker's Mark, Angel's Envy, High West, Michter's, Knob Creek, Four Roses
 
@@ -281,7 +281,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the app.
 
 1. **Discover** - Consumer sees QR code or finds via mobile ads
 2. **Age Gate** - Must verify 21+ to continue
-3. **Scan** - Point phone camera at competitor whiskey bottle (Jameson, Bulleit, etc.)
+3. **Scan** - Point phone camera at competitor whiskey bottle (various brands supported)
 4. **Detect** - Google Vision API identifies bottle brand in real-time
 5. **Animate** - AR "burn" effect plays over detected bottle
 6. **Upload** - Submit receipt photo showing Keeper's Heart purchase

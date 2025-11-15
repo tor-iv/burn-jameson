@@ -35,7 +35,7 @@ export default function IntroPage() {
       emoji: "📸",
       number: "①",
       title: "Scan",
-      description: "Point camera at Jameson bottle",
+      description: "Point camera at competitor whiskey bottle",
     },
     {
       icon: ShoppingCart,
