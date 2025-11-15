@@ -2,22 +2,13 @@
 
 import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { BurnAnimationProps } from "@/types/animations";
 
-interface SpinRevealAnimationProps {
-  boundingBox: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-  imageUrl: string;
-  segmentationMask?: string;
-  detectedBrand?: string | null;
-  aspectRatio?: number | null;
-  onComplete?: () => void;
+// Extended props for internal use (includes optional morph-related props)
+interface SpinRevealAnimationProps extends BurnAnimationProps {
   morphedImageUrl?: string | null;
   onRequestMorph?: () => void;
-  onBurnComplete?: () => void;
+  onComplete?: () => void;
 }
 
 /**
@@ -40,14 +31,42 @@ export default function SpinRevealAnimation({
 }: SpinRevealAnimationProps) {
   const [phase, setPhase] = useState<'spinning' | 'revealing' | 'complete'>('spinning');
   const [showMorphed, setShowMorphed] = useState(false);
+  const [containerDimensions, setContainerDimensions] = useState({ width: 0, height: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
   const hasCroppedImage = useRef(false);
   const hasRequestedMorph = useRef(false);
   const hasCalledBurnComplete = useRef(false);
   const hasCalledComplete = useRef(false);
 
+  // Get container dimensions for converting normalized coordinates to pixels
+  useEffect(() => {
+    if (containerRef.current) {
+      const updateDimensions = () => {
+        if (containerRef.current) {
+          setContainerDimensions({
+            width: containerRef.current.offsetWidth,
+            height: containerRef.current.offsetHeight,
+          });
+        }
+      };
+
+      updateDimensions();
+      window.addEventListener('resize', updateDimensions);
+      return () => window.removeEventListener('resize', updateDimensions);
+    }
+  }, []);
+
+  // Convert normalized bounding box (0-1) to pixel coordinates
+  const pixelBoundingBox = {
+    x: boundingBox.x * containerDimensions.width,
+    y: boundingBox.y * containerDimensions.height,
+    width: boundingBox.width * containerDimensions.width,
+    height: boundingBox.height * containerDimensions.height,
+  };
+
   // Extract bottle from original image using bounding box
   useEffect(() => {
-    if (hasCroppedImage.current) return;
+    if (hasCroppedImage.current || !pixelBoundingBox.width || !pixelBoundingBox.height) return;
 
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -57,27 +76,27 @@ export default function SpinRevealAnimation({
     img.crossOrigin = 'anonymous';
     img.onload = () => {
       // Set canvas size to bounding box dimensions
-      canvas.width = boundingBox.width;
-      canvas.height = boundingBox.height;
+      canvas.width = pixelBoundingBox.width;
+      canvas.height = pixelBoundingBox.height;
 
       // Draw the cropped bottle portion
       ctx.drawImage(
         img,
-        boundingBox.x,
-        boundingBox.y,
-        boundingBox.width,
-        boundingBox.height,
+        pixelBoundingBox.x,
+        pixelBoundingBox.y,
+        pixelBoundingBox.width,
+        pixelBoundingBox.height,
         0,
         0,
-        boundingBox.width,
-        boundingBox.height
+        pixelBoundingBox.width,
+        pixelBoundingBox.height
       );
 
       hasCroppedImage.current = true;
       console.log('[SpinRevealAnimation] Bottle cropped and ready');
     };
     img.src = imageUrl;
-  }, [imageUrl, boundingBox]);
+  }, [imageUrl, pixelBoundingBox.x, pixelBoundingBox.y, pixelBoundingBox.width, pixelBoundingBox.height]);
 
   // Request morph image early
   useEffect(() => {
@@ -126,7 +145,7 @@ export default function SpinRevealAnimation({
   }, [morphedImageUrl, onBurnComplete, onComplete]);
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-black">
+    <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-black">
       {/* Background: Original full image (darkened) */}
       <div className="absolute inset-0 opacity-30">
         <img
@@ -140,10 +159,10 @@ export default function SpinRevealAnimation({
       <div
         className="absolute"
         style={{
-          left: `${boundingBox.x}px`,
-          top: `${boundingBox.y}px`,
-          width: `${boundingBox.width}px`,
-          height: `${boundingBox.height}px`,
+          left: `${pixelBoundingBox.x}px`,
+          top: `${pixelBoundingBox.y}px`,
+          width: `${pixelBoundingBox.width}px`,
+          height: `${pixelBoundingBox.height}px`,
           perspective: '1000px',
         }}
       >
@@ -173,10 +192,10 @@ export default function SpinRevealAnimation({
                 alt="Competitor bottle"
                 className="w-full h-full object-contain"
                 style={{
-                  objectPosition: `${-boundingBox.x}px ${-boundingBox.y}px`,
+                  objectPosition: `${-pixelBoundingBox.x}px ${-pixelBoundingBox.y}px`,
                   objectFit: 'none',
-                  width: `${boundingBox.width}px`,
-                  height: `${boundingBox.height}px`,
+                  width: `${pixelBoundingBox.width}px`,
+                  height: `${pixelBoundingBox.height}px`,
                 }}
               />
             </motion.div>

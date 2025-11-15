@@ -67,6 +67,24 @@ const loadBurnAnimation = (animationType: string) => {
         ssr: false,
         loading: () => <div className="text-white text-center">Loading 3D fire animation...</div>,
       });
+    case '3coal':
+      return dynamic(() => import('./ThreeCoalAnimation').catch(err => {
+        console.error('[AnimationSwitcher] ❌ Failed to load ThreeCoalAnimation:', err);
+        console.error('[AnimationSwitcher] 🔄 Falling back to EnhancedFireAnimation');
+        return import('./EnhancedFireAnimation');
+      }), {
+        ssr: false,
+        loading: () => <div className="text-white text-center">Loading 3D coal animation...</div>,
+      });
+    case 'spin':
+      return dynamic(() => import('./SpinRevealAnimation').catch(err => {
+        console.error('[AnimationSwitcher] ❌ Failed to load SpinRevealAnimation:', err);
+        console.error('[AnimationSwitcher] 🔄 Falling back to EnhancedFireAnimation');
+        return import('./EnhancedFireAnimation');
+      }), {
+        ssr: false,
+        loading: () => <div className="text-white text-center">Loading spin animation...</div>,
+      });
     default:
       console.log('[AnimationSwitcher] ⚠️ Unknown animation type, falling back to fire');
       // Fallback to fire

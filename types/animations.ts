@@ -38,7 +38,7 @@ export interface MorphAnimationProps {
 /**
  * Animation type options
  */
-export type AnimationType = 'fire' | 'coal' | '3fire';
+export type AnimationType = 'fire' | 'coal' | '3fire' | '3coal' | 'spin';
 
 /**
  * Animation metadata

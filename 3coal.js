@@ -95,8 +95,8 @@ export default function CoalBoxAnimation({
       0.1,
       100
     );
-    camera.position.set(4, 3, 5);
-    camera.lookAt(0, boundingBox.height / 2, 0);
+    camera.position.set(0, 4, 10); // Higher and further back to see tall container
+    camera.lookAt(0, 3, 0); // Look at middle of 8-unit tall container
 
     // Renderer setup
     const renderer = new THREE.WebGLRenderer({ 
@@ -140,6 +140,31 @@ export default function CoalBoxAnimation({
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = renderer.shadowMap.enabled;
     scene.add(ground);
+
+    // VISIBLE CONTAINER BOX (4×4×8 wireframe)
+    const boxWidth = 4;
+    const boxDepth = 1.2;
+    const boxHeight = 8;
+    
+    const containerGeometry = new THREE.BoxGeometry(boxWidth, boxHeight, boxDepth);
+    const containerEdges = new THREE.EdgesGeometry(containerGeometry);
+    const containerLines = new THREE.LineSegments(
+      containerEdges,
+      new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2, transparent: true, opacity: 0.5 })
+    );
+    containerLines.position.y = boxHeight / 2; // Center at Y=4
+    scene.add(containerLines);
+    
+    // Add semi-transparent walls for better visibility
+    const wallMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0x00ff00, 
+      transparent: true, 
+      opacity: 0.05,
+      side: THREE.DoubleSide
+    });
+    const containerWalls = new THREE.Mesh(containerGeometry, wallMaterial);
+    containerWalls.position.y = boxHeight / 2;
+    scene.add(containerWalls);
 
     // Create coal piece geometry (irregular chunks)
     const createCoalGeometry = () => {
@@ -189,54 +214,33 @@ export default function CoalBoxAnimation({
     // Initialize coal pieces for stacking phase
     const initializeCoalPieces = () => {
       const { width, height, depth } = boundingBox;
-      const piecesPerLayer = 8; // Pieces around the perimeter
-      const layers = Math.ceil(pieceCount / piecesPerLayer);
+      
+      // Container dimensions: 4 wide × 4 deep × 8 tall
+      const containerWidth = 4;
+      const containerDepth = 1.2; // Depth for 3D stacking
+      const containerHeight = 8;
       
       for (let i = 0; i < pieceCount; i++) {
-        const layer = Math.floor(i / piecesPerLayer);
-        const posInLayer = i % piecesPerLayer;
-        const layerHeight = (layer / layers) * height;
+        // Pieces fall in sequence
+        const fallDelay = i * 0.05; // 50ms between drops
         
-        // Arrange pieces around box perimeter
-        let targetX, targetZ;
-        const side = Math.floor(posInLayer / 2);
-        const offset = (posInLayer % 2) * (side % 2 === 0 ? width : depth) / 2;
-        
-        switch (side) {
-          case 0: // Front
-            targetX = offset - width / 4;
-            targetZ = depth / 2;
-            break;
-          case 1: // Right
-            targetX = width / 2;
-            targetZ = offset - depth / 4;
-            break;
-          case 2: // Back
-            targetX = width / 4 - offset;
-            targetZ = -depth / 2;
-            break;
-          default: // Left
-            targetX = -width / 2;
-            targetZ = depth / 4 - offset;
-        }
-
+        // Random size variation (natural, not uniform)
         const size = new THREE.Vector3(
-          0.3 + Math.random() * 0.2,
-          0.3 + Math.random() * 0.2,
-          0.3 + Math.random() * 0.2
+          0.25 + Math.random() * 0.15,
+          0.25 + Math.random() * 0.15,
+          0.25 + Math.random() * 0.15
         );
 
-        const startHeight = 3 + Math.random() * 2 + (i * 0.1);
-        const dropDelay = i * 0.05; // Stagger the drops
+        // Start position: random X/Z above container
+        const startX = (Math.random() - 0.5) * containerWidth * 0.8;
+        const startZ = (Math.random() - 0.5) * containerDepth * 0.8;
+        const startHeight = containerHeight + 2 + Math.random() * 2;
 
+        // No fixed target - pieces will naturally settle where they land
         coalPieces.push({
           mesh: instancedMesh,
           instanceId: i,
-          position: new THREE.Vector3(
-            targetX + (Math.random() - 0.5) * 0.5,
-            startHeight,
-            targetZ + (Math.random() - 0.5) * 0.5
-          ),
+          position: new THREE.Vector3(startX, startHeight, startZ),
           velocity: new THREE.Vector3(0, 0, 0),
           rotation: new THREE.Euler(
             Math.random() * Math.PI * 2,
@@ -244,14 +248,19 @@ export default function CoalBoxAnimation({
             Math.random() * Math.PI * 2
           ),
           angularVelocity: new THREE.Vector3(
-            (Math.random() - 0.5) * 2,
-            (Math.random() - 0.5) * 2,
-            (Math.random() - 0.5) * 2
+            (Math.random() - 0.5) * 4,
+            (Math.random() - 0.5) * 4,
+            (Math.random() - 0.5) * 4
           ),
-          mass: size.x * size.y * size.z,
           size,
           isStatic: false,
-          isDynamic: dropDelay < performance.now() / 1000,
+          isDynamic: false,
+          fallDelay,
+          hasStartedFalling: false,
+          // Store container bounds for physics
+          containerWidth,
+          containerDepth,
+          containerHeight,
         });
       }
     };
@@ -300,14 +309,27 @@ export default function CoalBoxAnimation({
       }
     };
 
-    // Simple physics update
-    const updatePhysics = (deltaTime: number, currentPhase: string) => {
-      const dt = Math.min(deltaTime, 0.033); // Cap at 30fps physics
-      const friction = 0.95;
-      const restitution = 0.3; // Bounciness
+    // Physics update - Natural container filling
+    const updatePhysics = (deltaTime: number, currentPhase: string, elapsedTime: number) => {
+      const dt = Math.min(deltaTime, 0.033);
+      const friction = 0.92;
+      const restitution = 0.15;
+
+      // Container boundaries (4 wide × 1.2 deep × 8 tall) - SOLID WALLS
+      const containerWidth = 4;
+      const containerDepth = 1.2;
+      const halfWidth = containerWidth / 2; // ±2
+      const halfDepth = containerDepth / 2; // ±0.6
 
       coalPieces.forEach((piece, index) => {
-        if (piece.isStatic) return;
+        // Start falling based on delay
+        if (!piece.hasStartedFalling && elapsedTime >= piece.fallDelay) {
+          piece.hasStartedFalling = true;
+          piece.isDynamic = true;
+        }
+        
+        if (!piece.isDynamic) return;
+        if (piece.isStatic && currentPhase === 'stacking') return;
 
         // Apply gravity
         if (currentPhase === 'stacking' || currentPhase === 'crumbling') {
@@ -317,10 +339,57 @@ export default function CoalBoxAnimation({
         // Update position
         piece.position.addScaledVector(piece.velocity, dt);
 
-        // Update rotation
-        piece.rotation.x += piece.angularVelocity.x * dt;
-        piece.rotation.y += piece.angularVelocity.y * dt;
-        piece.rotation.z += piece.angularVelocity.z * dt;
+        // Update rotation (tumbling)
+        if (currentPhase === 'stacking' && piece.velocity.length() > 0.3) {
+          piece.rotation.x += piece.angularVelocity.x * dt;
+          piece.rotation.y += piece.angularVelocity.y * dt;
+          piece.rotation.z += piece.angularVelocity.z * dt;
+        } else if (currentPhase === 'crumbling') {
+          piece.rotation.x += piece.angularVelocity.x * dt;
+          piece.rotation.y += piece.angularVelocity.y * dt;
+          piece.rotation.z += piece.angularVelocity.z * dt;
+        }
+
+        // ⚡ ULTRA SIMPLE HARD WALLS - FORCE INSIDE ⚡
+        if (currentPhase === 'stacking') {
+          // Match physics walls EXACTLY to visible container dimensions
+          const WALL_LEFT = -containerWidth / 2;   // -2.0 (was -1.8)
+          const WALL_RIGHT = containerWidth / 2;   // +2.0 (was +1.8)
+          const WALL_FRONT = -containerDepth / 2;  // -0.6 (was -0.5)
+          const WALL_BACK = containerDepth / 2;    // +0.6 (was +0.5)
+
+          // Account for piece size to prevent edges from extending beyond walls
+          const halfPieceWidth = piece.size.x / 2;
+          const halfPieceDepth = piece.size.z / 2;
+
+          // X walls - FORCE inside (accounting for piece width)
+          if (piece.position.x - halfPieceWidth < WALL_LEFT) {
+            piece.position.x = WALL_LEFT + halfPieceWidth;
+            piece.velocity.x = Math.abs(piece.velocity.x) * 0.2;
+            piece.velocity.y *= 0.7;
+            piece.velocity.z *= 0.7;
+          }
+          if (piece.position.x + halfPieceWidth > WALL_RIGHT) {
+            piece.position.x = WALL_RIGHT - halfPieceWidth;
+            piece.velocity.x = -Math.abs(piece.velocity.x) * 0.2;
+            piece.velocity.y *= 0.7;
+            piece.velocity.z *= 0.7;
+          }
+
+          // Z walls - FORCE inside (accounting for piece depth)
+          if (piece.position.z - halfPieceDepth < WALL_FRONT) {
+            piece.position.z = WALL_FRONT + halfPieceDepth;
+            piece.velocity.z = Math.abs(piece.velocity.z) * 0.2;
+            piece.velocity.x *= 0.7;
+            piece.velocity.y *= 0.7;
+          }
+          if (piece.position.z + halfPieceDepth > WALL_BACK) {
+            piece.position.z = WALL_BACK - halfPieceDepth;
+            piece.velocity.z = -Math.abs(piece.velocity.z) * 0.2;
+            piece.velocity.x *= 0.7;
+            piece.velocity.y *= 0.7;
+          }
+        }
 
         // Ground collision
         const groundY = piece.size.y / 2;
@@ -331,52 +400,65 @@ export default function CoalBoxAnimation({
           piece.velocity.z *= friction;
           piece.angularVelocity.multiplyScalar(friction);
 
-          // Spawn dust on impact
           if (Math.abs(piece.velocity.y) > 0.5) {
-            spawnDust(piece.position, isLowEnd.current ? 2 : 5);
+            spawnDust(piece.position, isLowEnd.current ? 1 : 3);
           }
-
-          // Make static if velocity is low (stacking phase)
-          if (currentPhase === 'stacking' && piece.velocity.length() < 0.1) {
+          
+          // Lock when settled
+          if (currentPhase === 'stacking' && piece.velocity.length() < 0.08) {
             piece.isStatic = true;
             piece.velocity.set(0, 0, 0);
             piece.angularVelocity.set(0, 0, 0);
           }
         }
 
-        // Simple collision with other pieces (approximation for performance)
-        coalPieces.forEach((other, otherIndex) => {
-          if (index === otherIndex) return;
-          
-          const distance = piece.position.distanceTo(other.position);
-          const minDistance = (piece.size.length() + other.size.length()) / 3;
+        // COLLISION WITH OTHER PIECES (natural stacking)
+        if (currentPhase === 'stacking') {
+          coalPieces.forEach((other, otherIndex) => {
+            if (index === otherIndex) return;
+            if (!other.isDynamic && !other.isStatic) return;
+            
+            const distance = piece.position.distanceTo(other.position);
+            const minDistance = (piece.size.length() + other.size.length()) / 2.5;
 
-          if (distance < minDistance) {
-            const normal = new THREE.Vector3()
-              .subVectors(piece.position, other.position)
-              .normalize();
-            
-            const overlap = minDistance - distance;
-            piece.position.addScaledVector(normal, overlap / 2);
-            
-            if (!other.isStatic) {
-              other.position.addScaledVector(normal, -overlap / 2);
-            }
-
-            // Reflect velocity
-            const relativeVelocity = new THREE.Vector3().subVectors(piece.velocity, other.velocity);
-            const velocityAlongNormal = relativeVelocity.dot(normal);
-            
-            if (velocityAlongNormal < 0) {
-              const impulse = normal.multiplyScalar(velocityAlongNormal * restitution);
-              piece.velocity.sub(impulse);
+            if (distance < minDistance) {
+              const normal = new THREE.Vector3()
+                .subVectors(piece.position, other.position)
+                .normalize();
               
-              if (!other.isStatic) {
-                other.velocity.add(impulse);
+              const overlap = minDistance - distance;
+              
+              // Push pieces apart based on static state
+              if (other.isStatic && !piece.isStatic) {
+                piece.position.addScaledVector(normal, overlap);
+                
+                const velocityAlongNormal = piece.velocity.dot(normal);
+                if (velocityAlongNormal < 0) {
+                  piece.velocity.addScaledVector(normal, -velocityAlongNormal * (1 + restitution));
+                }
+                
+                piece.velocity.multiplyScalar(friction);
+                piece.angularVelocity.multiplyScalar(friction);
+                
+                if (Math.abs(velocityAlongNormal) > 0.5) {
+                  spawnDust(piece.position, isLowEnd.current ? 1 : 2);
+                }
+              } else if (!piece.isStatic && !other.isStatic) {
+                piece.position.addScaledVector(normal, overlap / 2);
+                other.position.addScaledVector(normal, -overlap / 2);
+                
+                const relativeVelocity = new THREE.Vector3().subVectors(piece.velocity, other.velocity);
+                const velocityAlongNormal = relativeVelocity.dot(normal);
+                
+                if (velocityAlongNormal < 0) {
+                  const impulse = normal.clone().multiplyScalar(velocityAlongNormal * restitution);
+                  piece.velocity.sub(impulse);
+                  other.velocity.add(impulse);
+                }
               }
             }
-          }
-        });
+          });
+        }
 
         // Update instance matrix
         matrix.compose(
@@ -490,16 +572,10 @@ export default function CoalBoxAnimation({
         onComplete?.();
       }
 
-      // Camera rotation during stable phase
-      if (phase === 'stable' && autoRotateCamera) {
-        const angle = elapsedTime * 0.5;
-        camera.position.x = Math.cos(angle) * 5;
-        camera.position.z = Math.sin(angle) * 5;
-        camera.lookAt(0, boundingBox.height / 2, 0);
-      }
+      // Camera stays fixed facing wall head-on (no rotation needed)
 
       // Update physics and particles
-      updatePhysics(deltaTime, phase);
+      updatePhysics(deltaTime, phase, elapsedTime);
       updateDustParticles(deltaTime);
 
       renderer.render(scene, camera);

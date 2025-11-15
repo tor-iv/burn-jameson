@@ -27,6 +27,18 @@ export const ANIMATION_CONFIGS: Record<AnimationType, AnimationMetadata> = {
     burnDuration: 6000,  // 6 seconds
     morphDuration: 2000, // 2 seconds
   },
+  '3coal': {
+    name: 'Three.js Coal',
+    description: 'WebGL coal stacking and crumbling with realistic physics',
+    burnDuration: 6000,  // 6 seconds
+    morphDuration: 2000, // 2 seconds
+  },
+  spin: {
+    name: 'Spin Reveal',
+    description: 'CSS 3D transform-based spin reveal animation',
+    burnDuration: 4000,  // 4 seconds (integrated burn + morph)
+    morphDuration: 0,    // Morph is integrated into the spin animation
+  },
 };
 
 /**
@@ -37,7 +49,7 @@ export function getAnimationType(): AnimationType {
   const envType = process.env.NEXT_PUBLIC_ANIMATION_TYPE?.toLowerCase();
 
   // Validate that it's a valid animation type
-  if (envType === 'fire' || envType === 'coal' || envType === '3fire') {
+  if (envType === 'fire' || envType === 'coal' || envType === '3fire' || envType === '3coal' || envType === 'spin') {
     return envType;
   }
 
